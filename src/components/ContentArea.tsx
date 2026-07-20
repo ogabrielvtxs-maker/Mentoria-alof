@@ -768,7 +768,7 @@ export default function ContentArea({
                 >
                   <option value="both">Ambos (Geral)</option>
                   <option value="soldado">Apenas Soldado</option>
-                  <option value="cfo">Apenas Oficial (CFO)</option>
+                  <option value="cfo" className="notranslate" translate="no">Apenas Oficial (CFO)</option>
                 </select>
               </div>
             </div>

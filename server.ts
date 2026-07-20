@@ -281,31 +281,38 @@ Por favor, inclua:
 3. Um exemplo prático ou mnemônico didático passo a passo para fixação absoluta.`;
         }
       } else if (action === "summarize") {
-        prompt = `Monte um resumo enciclopédico, extremamente robusto, ultra-detalhado e exaustivo para o assunto "${topic}" dentro da disciplina de "${subject}", focado com precisão cirúrgica no conteúdo programático oficial e nas recorrências reais e históricas das provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA).
+        prompt = `Pesquise profundamente na internet (usando a ferramenta integrada de busca do Google) sobre o assunto "${topic}" dentro da disciplina de "${subject}", focando nas especificidades, requisitos e conteúdo oficial previstos no edital para as provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA). Busque o conteúdo atualizado em sites de legislação, de editais, apostilas de concurso e de jurisprudência recente (incluindo as decisões de 2024, 2025 e 2026).
 
-Por favor, não faça resumos curtos ou superficiais. Desenvolva o conteúdo com o máximo detalhamento doutrinário, jurisprudencial e legal possível, contendo os seguintes tópicos estruturados:
+Monte um resumo ENCICLOPÉDICO, extremamente robusto, ultra-detalhado, completo e exaustivo para o assunto "${topic}" dentro da disciplina de "${subject}". 
+Este resumo deve cobrir com precisão cirúrgica TODAS as previsões do edital oficial e do conteúdo programático para as provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA).
 
-1. INTRODUÇÃO E CONTEXTUALIZAÇÃO DO CONCEITO:
-   - Definição exaustiva do instituto jurídico ou conceito teórico.
-   - Origem doutrinária e evolução histórica aplicável.
+Por favor, evite respostas curtas, resumos superficiais ou simplificações de poucas linhas. Elabore o conteúdo com máxima profundidade doutrinária, jurisprudencial e legal, contendo os seguintes tópicos obrigatoriamente estruturados:
 
-2. ANÁLISE DO ORDENAMENTO JURÍDICO E DISPOSITIVOS LEGAIS:
-   - Citação literal comentada e esquematizada dos respectivos artigos de lei fundamentais (seja da Constituição Federal, do Código Penal, do Código de Processo Penal, do Estatuto dos Policiais Militares da Bahia - Lei Estadual nº 7.990/2001, da Lei de Tortura - Lei 9.455/97, da Lei de Abuso de Autoridade - Lei 13.869/19, etc.). Explique a aplicação direta desses artigos nas atribuições do militar baiano.
+1. CONTEÚDO PROGRAMÁTICO INTEGRAL E PREVISÃO DO EDITAL:
+   - Descreva com detalhes qual é a exata previsão deste assunto "${topic}" no edital da PMBA.
+   - Explique a contextualização histórica, doutrinária e conceitual completa do instituto.
 
-3. TABELAS COMPARATIVAS E MNEMÔNICOS DE FIXAÇÃO:
-   - Apresente tabelas comparativas altamente robustas e estruturadas em Markdown para diferenciar conceitos próximos que a banca examinadora costuma trocar ou confundir nas questões (ex: dolo x culpa, crimes de perigo x dano, detenção x reclusão).
-   - Inclua mnemônicos didáticos brilhantes e consagrados para memorização ágil de prazos e requisitos da legislação.
+2. ANÁLISE DETALHADA DA LEGISLAÇÃO (LEI SECA COMENTADA):
+   - Apresente a citação literal comentada e esquematizada de todos os dispositivos legais, artigos, incisos e parágrafos correspondentes no ordenamento brasileiro e estadual (Constituição Federal, Código Penal, Código de Processo Penal, Estatuto dos Policiais Militares da Bahia - Lei Estadual nº 7.990/2001, Constituição do Estado da Bahia, Lei de Tortura - Lei 9.455/97, Lei de Abuso de Autoridade - Lei 13.869/19, etc., conforme couber).
+   - Faça uma explicação minuciosa e artigo por artigo sobre como isso se aplica à atividade diária e atribuições do militar baiano.
 
-4. DIRETRIZES DA BANCA EXAMINADORA (IBFC/PMBA):
-   - Mapeamento das "pegadinhas" e pegadas clássicas que a banca examinadora já usou ou tem grande chance de usar sobre este exato tema nas provas anteriores de CFO e Soldado PMBA.
-   - Indicação de tendências recentes de cobrança e teses jurisprudenciais pacíficas dos Tribunais Superiores (STF/STJ) que impactam a interpretação desse assunto.
+3. TABELAS COMPARATIVAS E DIFERENCIAÇÕES CRUCIAIS:
+   - Crie tabelas comparativas robustas e estruturadas em formato Markdown (usando barras '|') para diferenciar termos assemelhados que a banca examinadora costuma trocar ou misturar para confundir o candidato (ex: dolo x culpa, crimes de perigo x dano, detenção x reclusão).
+   - Inclua mnemônicos consagrados, esquemas didáticos criativos e macetes pedagógicos de fácil memorização para prazos, requisitos e classificações de leis.
+
+4. DIRETRIZES DA BANCA EXAMINADORA (ANÁLISE DE QUESTÕES HISTÓRICAS):
+   - Mapeie detalhadamente como a banca (como a IBFC) costuma cobrar este assunto nas provas de Soldado e CFO PMBA.
+   - Indique as principais "pegadinhas" (cascas de banana) recorrentes em provas anteriores e tendências recentes de cobrança.
+   - Cite o entendimento e teses jurisprudenciais pacíficas dos Tribunais Superiores (STF, STJ) aplicáveis a este exato ponto do edital.
 
 5. OS 5 PONTOS DE OURO DA VÉSPERA:
-   - Uma lista de 5 direcionamentos e resumos sintéticos cruciais de revisão rápida de última hora para fixação cirúrgica.
+   - Uma lista com 5 direcionamentos cruciais e resumos sintéticos de alto impacto para revisão rápida de última hora.
 
-Diretriz de escrita e formatação obrigatória:
-- PROIBIDO O USO DE QUALQUER CARACTERE DE ASTERISCO (* ou **) no texto do resumo. Para formatação de títulos ou seções em destaque, use letras maiúsculas (CAIXA ALTA) ou sublinhados/hífens (-). Nunca utilize asteriscos, pois isso polui visualmente o renderizador.
-- PROIBIDO terminantemente o uso de palavras abreviadas, incompletas ou jargões crípticos. Escreva todas as palavras integralmente por extenso com redação impecável e clara em língua portuguesa.`;
+Diretriz de escrita e formatação (essencial para o renderizador):
+- USE formatação em Markdown de alta qualidade: utilize '#' para títulos, '##' para subtítulos, e '###' para divisões de tópicos.
+- USE asteriscos duplos '**' para destacar termos importantes, artigos de leis, prazos e palavras-chave (ex: **prazo de 5 anos**, **Estatuto da PMBA**).
+- USE hífens ou asteriscos para listas e marcadores (- ou *).
+- Escreva TODAS as palavras de forma clara, limpa e por extenso na norma culta da língua portuguesa. Proibido o uso de abreviações obscuras ou jargões crípticos.`;
       } else if (action === "questions") {
         prompt = `Gere exatamente 20 questões semelhantes de múltipla escolha focadas no concurso da PMBA para o assunto "${topic}" da disciplina de "${subject}". \n\nAs questões devem cobrir o nível exigido para os concursos da Bahia. Para cada questão:\n- Insira o enunciado claro com 5 alternativas (A, B, C, D, E).\n- Logo após cada questão, inclua o Gabarito Comentado didático explicativo justificando passo a passo por que a resposta correta é aquela e por que as outras estão incorretas.\n\nFormate as questões de forma legível e numerada de 1 a 20.`;
       } else if (action === "flashcards") {
@@ -412,6 +419,8 @@ Por favor:
         return res.status(400).json({ error: "Ação de IA inválida" });
       }
 
+      const isSearchEnabled = ["summarize", "explain", "ask_doubt"].includes(action);
+
       const response = await generateContentWithRetry(ai, {
         model: "gemini-3.5-flash",
         contents: prompt,
@@ -420,6 +429,7 @@ Por favor:
           temperature: action === "generate_question" ? 0.4 : 0.2,
           responseMimeType: action === "generate_question" ? "application/json" : undefined,
           responseSchema: responseSchema,
+          tools: isSearchEnabled ? [{ googleSearch: {} }] : undefined,
         }
       });
 

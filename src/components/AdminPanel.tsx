@@ -1480,43 +1480,7 @@ export default function AdminPanel({ currentUser, allUsers, onUpdateUser, onDele
         </div>
       </div>
 
-      {/* Firebase Auth Warning Banner */}
-      {showFirebaseAuthWarning && (
-        <div className="p-4 mb-6 rounded-xl border bg-amber-500/10 border-amber-500/30 text-amber-300 text-xs leading-relaxed space-y-1 relative animate-fade-in">
-          <button 
-            type="button"
-            onClick={() => {
-              setShowFirebaseAuthWarning(false);
-              localStorage.removeItem("firebase_auth_method_disabled");
-            }}
-            className="absolute top-2.5 right-2.5 text-amber-400 hover:text-white font-bold cursor-pointer transition"
-            title="Dispensar aviso"
-          >
-            <X className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-1.5 font-bold uppercase text-[10px] text-amber-400">
-            <AlertCircle className="w-4 h-4" />
-            <span>Alerta de Autenticação do Firebase (Instrução para o Administrador)</span>
-          </div>
-          <p>
-            O provedor de <strong>E-mail/Senha</strong> está desativado no Console do Firebase de seu projeto.
-          </p>
-          <p className="text-slate-400">
-            Para que o Firebase Auth funcione plenamente de forma síncrona na nuvem, acesse o{" "}
-            <a 
-              href="https://console.firebase.google.com/" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="text-amber-400 underline font-bold hover:text-amber-300"
-            >
-              Console do Firebase
-            </a>, vá em <strong>Authentication &gt; Sign-in method &gt; Adicionar provedor</strong> e ative o provedor de <strong>E-mail/Senha</strong>.
-          </p>
-          <p className="text-slate-400 font-medium text-[11px]">
-            *Seus alunos continuarão conseguindo logar normalmente através da base de dados local reserva enquanto isso.
-          </p>
-        </div>
-      )}
+      {/* Firebase Auth Warning Banner Removed */}
 
       {/* Notification banner */}
       {notification && (
@@ -2956,9 +2920,10 @@ export default function AdminPanel({ currentUser, allUsers, onUpdateUser, onDele
                         setValCategory("cfo");
                         setValSelectedStudentId("");
                       }}
-                      className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg transition cursor-pointer ${
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg transition cursor-pointer notranslate ${
                         valCategory === "cfo" ? "bg-amber-400 text-slate-950" : "text-slate-400 hover:text-white"
                       }`}
+                      translate="no"
                     >
                       🎖️ CFO PMBA
                     </button>

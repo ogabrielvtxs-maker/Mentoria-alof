@@ -43,7 +43,9 @@ import {
   Lock,
   AlertTriangle,
   CheckCircle2,
-  FileText
+  FileText,
+  Sun,
+  Moon
 } from "lucide-react";
 
 const INITIAL_USERS: User[] = [
@@ -107,6 +109,26 @@ const INITIAL_USERS: User[] = [
 const ADMIN_EMAILS = ["alofemacao@gmail.com", "gabrielj0s239@gmail.com"];
 
 export default function App() {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("platform-theme");
+    return (saved as "light" | "dark") || "dark";
+  });
+
+  useEffect(() => {
+    if (theme === "light") {
+      document.documentElement.classList.add("light");
+      document.documentElement.classList.remove("dark");
+    } else {
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+    }
+    localStorage.setItem("platform-theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  };
+
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
@@ -972,6 +994,15 @@ export default function App() {
 
           {/* User Status Badge and Logout */}
           <div className="hidden md:flex items-center gap-4">
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              className="p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-amber-400 hover:text-amber-300 cursor-pointer transition flex items-center justify-center"
+              title={theme === "dark" ? "Ativar Modo Claro" : "Ativar Modo Escuro"}
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
             <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 px-4 py-1.5 rounded-xl">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <div className="text-left text-xs">
@@ -993,13 +1024,25 @@ export default function App() {
             </button>
           </div>
 
-          {/* Mobile menu trigger */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-300"
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          {/* Mobile controls */}
+          <div className="flex md:hidden items-center gap-2">
+            {/* Theme Toggle Button (Mobile) */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 bg-slate-950 border border-slate-800 rounded-xl text-amber-400 cursor-pointer transition"
+              title={theme === "dark" ? "Ativar Modo Claro" : "Ativar Modo Escuro"}
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* Mobile menu trigger */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-300"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
       </header>
 

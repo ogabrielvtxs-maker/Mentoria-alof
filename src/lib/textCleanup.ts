@@ -61,8 +61,8 @@ export function stripMarkdownAsterisks(text: string): string {
  */
 export function strictPreprocessGeminiText(text: string): string {
   if (!text) return "";
-  // Strictly remove all '*' characters
-  return text.replace(/\*/g, "");
+  // Preserve markdown asterisks (* and **) so our rich text renderer can display bolding, lists, and tables correctly.
+  return text;
 }
 
 /**

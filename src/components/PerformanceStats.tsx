@@ -561,8 +561,8 @@ export default function PerformanceStats({ currentUser, overrideStudentId }: Per
                     onChange={(e) => setSyllabusTab(e.target.value as "cfo" | "soldado")}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-400 cursor-pointer font-bold"
                   >
-                    <option value="soldado">SOLDADO PMBA</option>
-                    <option value="cfo">CFO PMBA (OFICIAL)</option>
+                    <option value="soldado" className="notranslate" translate="no">SOLDADO PMBA</option>
+                    <option value="cfo" className="notranslate" translate="no">CFO PMBA (OFICIAL)</option>
                   </select>
                   <p className="text-[9px] text-slate-500 mt-1">
                     Selecione para alternar o menu suspenso de matérias entre Soldado e CFO.
@@ -570,7 +570,7 @@ export default function PerformanceStats({ currentUser, overrideStudentId }: Per
                 </div>
               ) : (
                 <div>
-                  <span className="text-[10px] bg-slate-950 text-amber-400 border border-amber-400/20 px-2 py-1 rounded font-black uppercase tracking-wider block text-center">
+                  <span className="text-[10px] bg-slate-950 text-amber-400 border border-amber-400/20 px-2 py-1 rounded font-black uppercase tracking-wider block text-center notranslate" translate="no">
                     Edital Ativo: {syllabusTab === "soldado" ? "Soldado PMBA" : "CFO PMBA"}
                   </span>
                 </div>
@@ -931,15 +931,16 @@ export default function PerformanceStats({ currentUser, overrideStudentId }: Per
                         <button
                           type="button"
                           onClick={() => setSyllabusTab("cfo")}
-                          className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase transition cursor-pointer ${
+                          className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase transition cursor-pointer notranslate ${
                             syllabusTab === "cfo" ? "bg-amber-400 text-slate-950" : "text-slate-400 hover:text-white"
                           }`}
+                          translate="no"
                         >
                           CFO
                         </button>
                       </div>
                     ) : (
-                      <span className="text-[8px] bg-slate-950 text-amber-400 border border-amber-400/20 px-1.5 py-0.5 rounded font-black uppercase">
+                      <span className="text-[8px] bg-slate-950 text-amber-400 border border-amber-400/20 px-1.5 py-0.5 rounded font-black uppercase notranslate" translate="no">
                         {syllabusTab}
                       </span>
                     )}

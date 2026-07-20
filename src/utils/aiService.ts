@@ -187,15 +187,38 @@ Por favor, inclua:
 3. Um exemplo prático ou mnemônico didático passo a passo para fixação absoluta.`;
     }
   } else if (action === "summarize") {
-    prompt = `Monte um resumo extremamente completo, aprofundado e detalhado para o assunto "${topic}" dentro da disciplina de "${subject}", focado estritamente no conteúdo programático e no que é mais recorrentemente cobrado nas provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA).
+    prompt = `Pesquise profundamente na internet (usando a ferramenta integrada de busca do Google) sobre o assunto "${topic}" dentro da disciplina de "${subject}", focando nas especificidades, requisitos e conteúdo oficial previstos no edital para as provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA). Busque o conteúdo atualizado em sites de legislação, de editais, apostilas de concurso e de jurisprudência recente (incluindo as decisões de 2024, 2025 e 2026).
 
-Por favor, elabore o conteúdo com máximo detalhamento doutrinário e legal, incluindo:
-1. ANÁLISE JURÍDICA/TEÓRICA PROFUNDA: Explique detalhadamente cada conceito, classificações, teorias aceitas, e cite os respectivos artigos de lei (Constituição Federal, Código Penal, Código de Processo Penal, Estatuto dos Policiais Militares da Bahia - Lei 7.990/01, etc.).
-2. TABELAS COMPARATIVAS E MNEMÔNICOS: Apresente tabelas comparativas robustas em Markdown para diferenciar conceitos próximos que a banca tenta confundir. Inclua mnemônicos pedagógicos célebres e criativos para memorização de prazos e requisitos legais.
-3. PREFERÊNCIA DA BANCA (IBFC/PMBA): Destaque as principais pegadinhas, "cascas de banana" históricas e tendências de cobrança das provas da PMBA para este exato assunto.
-4. "OS 5 PONTOS DE OURO DA VÉSPERA": Uma lista extremamente detalhada com 5 direcionamentos cruciais para revisão rápida.
+Monte um resumo ENCICLOPÉDICO, extremamente robusto, ultra-detalhado, completo e exaustivo para o assunto "${topic}" dentro da disciplina de "${subject}". 
+Este resumo deve cobrir com precisão cirúrgica TODAS as previsões do edital oficial e do conteúdo programático para as provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA).
 
-Diretriz de formatação: Evite excesso de asteriscos. NUNCA use palavras incompletas ou abreviações obscuras. Escreva todas as palavras por extenso de forma clara e limpa.`;
+Por favor, evite respostas curtas, resumos superficiais ou simplificações de poucas linhas. Elabore o conteúdo com máxima profundidade doutrinária, jurisprudencial e legal, contendo os seguintes tópicos obrigatoriamente estruturados:
+
+1. CONTEÚDO PROGRAMÁTICO INTEGRAL E PREVISÃO DO EDITAL:
+   - Descreva com detalhes qual é a exata previsão deste assunto "${topic}" no edital da PMBA.
+   - Explique a contextualização histórica, doutrinária e conceitual completa do instituto.
+
+2. ANÁLISE DETALHADA DA LEGISLAÇÃO (LEI SECA COMENTADA):
+   - Apresente a citação literal comentada e esquematizada de todos os dispositivos legais, artigos, incisos e parágrafos correspondentes no ordenamento brasileiro e estadual (Constituição Federal, Código Penal, Código de Processo Penal, Estatuto dos Policiais Militares da Bahia - Lei Estadual nº 7.990/2001, Constituição do Estado da Bahia, Lei de Tortura - Lei 9.455/97, Lei de Abuso de Autoridade - Lei 13.869/19, etc., conforme couber).
+   - Faça uma explicação minuciosa e artigo por artigo sobre como isso se aplica à atividade diária e atribuições do militar baiano.
+
+3. TABELAS COMPARATIVAS E DIFERENCIAÇÕES CRUCIAIS:
+   - Crie tabelas comparativas robustas e estruturadas em formato Markdown (usando barras '|') para diferenciar termos assemelhados que a banca examinadora costuma trocar ou misturar para confundir o candidato (ex: dolo x culpa, crimes de perigo x dano, detenção x reclusão).
+   - Inclua mnemônicos consagrados, esquemas didáticos criativos e macetes pedagógicos de fácil memorização para prazos, requisitos e classificações de leis.
+
+4. DIRETRIZES DA BANCA EXAMINADORA (ANÁLISE DE QUESTÕES HISTÓRICAS):
+   - Mapeie detalhadamente como a banca (como a IBFC) costuma cobrar este assunto nas provas de Soldado e CFO PMBA.
+   - Indique as principais "pegadinhas" (cascas de banana) recorrentes em provas anteriores e tendências recentes de cobrança.
+   - Cite o entendimento e teses jurisprudenciais pacíficas dos Tribunais Superiores (STF, STJ) aplicáveis a este exato ponto do edital.
+
+5. OS 5 PONTOS DE OURO DA VÉSPERA:
+   - Uma lista com 5 direcionamentos cruciais e resumos sintéticos de alto impacto para revisão rápida de última hora.
+
+Diretriz de escrita e formatação (essencial para o renderizador):
+- USE formatação em Markdown de alta qualidade: utilize '#' para títulos, '##' para subtítulos, e '###' para divisões de tópicos.
+- USE asteriscos duplos '**' para destacar termos importantes, artigos de leis, prazos e palavras-chave (ex: **prazo de 5 anos**, **Estatuto da PMBA**).
+- USE hífens ou asteriscos para listas e marcadores (- ou *).
+- Escreva TODAS as palavras de forma clara, limpa e por extenso na norma culta da língua portuguesa. Proibido o uso de abreviações obscuras ou jargões crípticos.`;
   } else if (action === "questions") {
     prompt = `Gere exatamente 20 questões semelhantes de múltipla escolha focadas no concurso da PMBA para o assunto "${topic}" da disciplina de "${subject}". \n\nAs questões devem cobrir o nível exigido para os concursos da Bahia. Para cada questão:\n- Insira o enunciado claro com 5 alternativas (A, B, C, D, E).\n- Logo após cada questão, inclua o Gabarito Comentado didático explicativo justificando passo a passo por que a resposta correta é aquela e por que as outras estão incorretas.\n\nFormate as questões de forma legível e numerada de 1 a 20.`;
   } else if (action === "flashcards") {
@@ -302,6 +325,8 @@ Retorne APENAS o objeto JSON puro, sem blocos de código markdown ou texto expli
     throw new Error("Ação de IA inválida");
   }
 
+  const isSearchEnabled = ["summarize", "explain", "ask_doubt"].includes(action);
+
   const response = await generateContentWithRetryClient(ai, {
     model: "gemini-3.5-flash",
     contents: prompt,
@@ -310,6 +335,7 @@ Retorne APENAS o objeto JSON puro, sem blocos de código markdown ou texto expli
       temperature: action === "generate_question" ? 0.4 : 0.2,
       responseMimeType: action === "generate_question" ? "application/json" : undefined,
       responseSchema: responseSchema,
+      tools: isSearchEnabled ? [{ googleSearch: {} }] : undefined,
     },
   });
 

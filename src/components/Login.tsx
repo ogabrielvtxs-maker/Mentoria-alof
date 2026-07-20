@@ -371,35 +371,7 @@ export default function Login({ onLoginSuccess, allUsers, onRegisterUser }: Logi
           </p>
         </div>
 
-        {/* Configuration notice banner when email/password auth provider is disabled */}
-        {showConfigWarning && (
-          <div className="mb-5 p-3.5 bg-amber-400/10 border border-amber-400/25 rounded-2xl text-[11px] text-amber-300 leading-relaxed space-y-1 relative animate-fade-in text-left">
-            <button 
-              type="button"
-              onClick={() => {
-                setShowConfigWarning(false);
-                localStorage.removeItem("firebase_auth_method_disabled");
-              }}
-              className="absolute top-2.5 right-2.5 text-amber-400 hover:text-white font-bold cursor-pointer transition text-xs px-1"
-              title="Dispensar aviso"
-            >
-              ×
-            </button>
-            <div className="flex items-center gap-1.5 font-bold uppercase text-[10px] text-amber-400 mb-1">
-              <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-              <span>Instrução de Configuração do Firebase</span>
-            </div>
-            <p>
-              O provedor de <strong>E-mail/Senha</strong> está desativado no seu console do Firebase.
-            </p>
-            <p className="text-slate-400">
-              Se você é o coordenador, ative-o em: <strong>Authentication &gt; Sign-in method &gt; E-mail/Senha</strong>.
-            </p>
-            <p className="text-slate-400 font-medium text-[10px]">
-              *Alunos continuarão conseguindo se cadastrar e acessar normalmente via base de dados local reserva enquanto isso.
-            </p>
-          </div>
-        )}
+        {/* Configuration notice banner when email/password auth provider is disabled - REMOVED */}
 
         {/* Dynamic Views: LOGIN */}
         {view === "login" && (
@@ -582,7 +554,7 @@ export default function Login({ onLoginSuccess, allUsers, onRegisterUser }: Logi
                   ) : (
                     <Square className="w-4 h-4 text-slate-600" />
                   )}
-                  <span>CFO (Oficial)</span>
+                  <span className="notranslate" translate="no">CFO (Oficial)</span>
                 </button>
               </div>
             </div>

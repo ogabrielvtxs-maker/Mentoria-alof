@@ -502,7 +502,11 @@ export default function VerticalSyllabus({ currentUser }: VerticalSyllabusProps)
               }`}
             >
               <Flame className="w-3.5 h-3.5" />
-              {activeTab === "cfo" ? "Raio-X PMBA (Foco CFO 🏆)" : "Raio-X PMBA (Foco Soldado 🎯)"}
+              {activeTab === "cfo" ? (
+                <span className="notranslate" translate="no">Raio-X PMBA (Foco CFO 🏆)</span>
+              ) : (
+                "Raio-X PMBA (Foco Soldado 🎯)"
+              )}
             </button>
           </div>
 
@@ -1148,7 +1152,7 @@ export default function VerticalSyllabus({ currentUser }: VerticalSyllabusProps)
               <div className="bg-slate-950/80 px-4 py-3 border-b border-slate-800 flex justify-between items-center">
                 <span className="font-bold text-xs text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
                   <Trophy className="w-4 h-4 text-amber-500" />
-                  Top 15 Assuntos Mais Cobrados ({activeTab === "cfo" ? "Oficial CFO" : "Soldado"})
+                  Top 15 Assuntos Mais Cobrados ({activeTab === "cfo" ? <span className="notranslate inline" translate="no">Oficial CFO</span> : "Soldado"})
                 </span>
                 <span className="text-[10px] text-slate-400">
                   Comprovado estatisticamente pelas provas reais
