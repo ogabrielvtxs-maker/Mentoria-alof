@@ -103,25 +103,40 @@ export async function callAIAction(body: {
   year?: string | number;
   banca?: string;
 }): Promise<{ text: string }> {
-  // 1. Try to fetch the backend server endpoint
-  try {
-    const response = await fetch("/api/ai/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  // 1. Try to fetch the backend server endpoint with a robust retry mechanism
+  const maxRetries = 2;
+  let fetchResponse: Response | null = null;
+  let lastError: any = null;
 
-    const isHtml = await isHtmlResponse(response);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fetchResponse = await fetch("/api/ai/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      break; // Success, break out of retry loop
+    } catch (err: any) {
+      console.warn(`[API] Tentativa ${attempt} de se comunicar com o servidor falhou:`, err);
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  }
 
-    if (response.ok && !isHtml) {
-      return preprocessGeminiResponse(await response.json());
+  if (fetchResponse) {
+    const isHtml = await isHtmlResponse(fetchResponse);
+
+    if (fetchResponse.ok && !isHtml) {
+      return preprocessGeminiResponse(await fetchResponse.json());
     } else if (isHtml) {
       throw new Error(
         "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML). Isso pode ocorrer se o servidor estiver reiniciando ou em manutenção. Por favor, aguarde alguns instantes e recarregue a página."
       );
     } else {
       try {
-        const errJson = await response.json();
+        const errJson = await fetchResponse.json();
         if (errJson && errJson.error) {
           throw new Error(errJson.error);
         }
@@ -130,14 +145,13 @@ export async function callAIAction(body: {
           throw e;
         }
       }
-      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
+      throw new Error(`O servidor retornou um status de erro: ${fetchResponse.status}`);
     }
-  } catch (err: any) {
-    console.warn("Backend server returned an error.", err);
+  } else {
     const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
     if (!hasClientKey) {
       throw new Error(
-        err?.message || "Não foi possível se comunicar com o servidor do Mentor de Estudos IA e nenhuma chave de API local foi configurada. Verifique se o servidor está ativo."
+        `Não foi possível se comunicar com o servidor do Mentor de Estudos IA após tentativas. Erro: ${lastError?.message || "Failed to fetch"}. Verifique se o servidor está ativo.`
       );
     }
   }
@@ -153,9 +167,25 @@ export async function callAIAction(body: {
   let responseSchema: any = undefined;
 
   if (action === "explain") {
-    prompt = `Explique detalhadamente o assunto "${topic}" dentro da disciplina de "${subject}". \n\n${
-      contextText ? `Dúvida específica ou questão do aluno: ${contextText}\n\n` : ""
-    }Por favor, inclua:\n1. Conceito principal e base jurídica/teórica aplicável\n2. Pontos de atenção e possíveis pegadinhas que a banca costuma cobrar nos concursos de Oficial (CFO) e Soldado da Bahia\n3. Um exemplo prático ou mnemônico didático passo a passo para fixação absoluta.`;
+    if (contextText) {
+      prompt = `O aluno possui uma dúvida específica ou enviou uma questão sobre o assunto "${topic}" dentro da disciplina de "${subject}".
+
+DÚVIDA / QUESTÃO DO ALUNO:
+"${contextText}"
+
+Por favor, responda de forma extremamente cirúrgica, didática e detalhada focando estritamente na dúvida ou questão enviada pelo aluno. Não faça uma explicação genérica do assunto se a dúvida for específica.
+Inclua:
+1. Explicação e resolução detalhada da dúvida ou questão do aluno, fundamentada na lei seca e jurisprudência aplicável ao concurso CFO/Soldado PMBA.
+2. Análise do contexto de onde essa dúvida se insere no assunto "${topic}" e disciplina "${subject}".
+3. Mnemônico, macete didático ou dica prática para fixação absoluta do conceito abordado na dúvida do aluno.`;
+    } else {
+      prompt = `Explique detalhadamente o assunto "${topic}" dentro da disciplina de "${subject}".
+
+Por favor, inclua:
+1. Conceito principal e base jurídica/teórica aplicável ao concurso CFO/Soldado PMBA.
+2. Pontos de atenção e possíveis pegadinhas que a banca costuma cobrar nas provas da Bahia.
+3. Um exemplo prático ou mnemônico didático passo a passo para fixação absoluta.`;
+    }
   } else if (action === "summarize") {
     prompt = `Monte um resumo extremamente completo, aprofundado e detalhado para o assunto "${topic}" dentro da disciplina de "${subject}", focado estritamente no conteúdo programático e no que é mais recorrentemente cobrado nas provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA).
 
@@ -294,25 +324,40 @@ Retorne APENAS o objeto JSON puro, sem blocos de código markdown ou texto expli
  * Executes AI OCR on an uploaded base64 image
  */
 export async function callAIOcr(body: { image: string; mimeType?: string }): Promise<{ text: string }> {
-  // 1. Try to fetch the backend server endpoint
-  try {
-    const response = await fetch("/api/ai/ocr", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  // 1. Try to fetch the backend server endpoint with a robust retry mechanism
+  const maxRetries = 2;
+  let fetchResponse: Response | null = null;
+  let lastError: any = null;
 
-    const isHtml = await isHtmlResponse(response);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fetchResponse = await fetch("/api/ai/ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      break; // Success, break out of retry loop
+    } catch (err: any) {
+      console.warn(`[OCR API] Tentativa ${attempt} de se comunicar com o servidor falhou:`, err);
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  }
 
-    if (response.ok && !isHtml) {
-      return preprocessGeminiResponse(await response.json());
+  if (fetchResponse) {
+    const isHtml = await isHtmlResponse(fetchResponse);
+
+    if (fetchResponse.ok && !isHtml) {
+      return preprocessGeminiResponse(await fetchResponse.json());
     } else if (isHtml) {
       throw new Error(
         "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML) durante a extração de texto. Por favor, tente novamente em alguns instantes."
       );
     } else {
       try {
-        const errJson = await response.json();
+        const errJson = await fetchResponse.json();
         if (errJson && errJson.error) {
           throw new Error(errJson.error);
         }
@@ -321,14 +366,13 @@ export async function callAIOcr(body: { image: string; mimeType?: string }): Pro
           throw e;
         }
       }
-      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
+      throw new Error(`O servidor retornou um status de erro: ${fetchResponse.status}`);
     }
-  } catch (err: any) {
-    console.warn("Backend server returned an error.", err);
+  } else {
     const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
     if (!hasClientKey) {
       throw new Error(
-        err?.message || "Não foi possível conectar ao servidor de extração de texto por IA e nenhuma chave local está configurada."
+        `Não foi possível conectar ao servidor de extração de texto por IA após tentativas. Erro: ${lastError?.message || "Failed to fetch"}`
       );
     }
   }
@@ -376,25 +420,40 @@ export async function callAICorrectEssay(body: {
   essayText: string;
   studentName?: string;
 }): Promise<any> {
-  // 1. Try to fetch the backend server endpoint
-  try {
-    const response = await fetch("/api/ai/correct-essay", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  // 1. Try to fetch the backend server endpoint with a robust retry mechanism
+  const maxRetries = 2;
+  let fetchResponse: Response | null = null;
+  let lastError: any = null;
 
-    const isHtml = await isHtmlResponse(response);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fetchResponse = await fetch("/api/ai/correct-essay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      break; // Success, break out of retry loop
+    } catch (err: any) {
+      console.warn(`[Essay API] Tentativa ${attempt} de se comunicar com o servidor falhou:`, err);
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  }
 
-    if (response.ok && !isHtml) {
-      return preprocessGeminiResponse(await response.json());
+  if (fetchResponse) {
+    const isHtml = await isHtmlResponse(fetchResponse);
+
+    if (fetchResponse.ok && !isHtml) {
+      return preprocessGeminiResponse(await fetchResponse.json());
     } else if (isHtml) {
       throw new Error(
         "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML) durante a correção da redação. Por favor, aguarde alguns instantes e tente novamente."
       );
     } else {
       try {
-        const errJson = await response.json();
+        const errJson = await fetchResponse.json();
         if (errJson && errJson.error) {
           throw new Error(errJson.error);
         }
@@ -403,14 +462,13 @@ export async function callAICorrectEssay(body: {
           throw e;
         }
       }
-      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
+      throw new Error(`O servidor retornou um status de erro: ${fetchResponse.status}`);
     }
-  } catch (err: any) {
-    console.warn("Backend server returned an error.", err);
+  } else {
     const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
     if (!hasClientKey) {
       throw new Error(
-        err?.message || "Não foi possível conectar ao servidor de correção de redações e nenhuma chave local está configurada."
+        `Não foi possível conectar ao servidor de correção de redações após tentativas. Erro: ${lastError?.message || "Failed to fetch"}`
       );
     }
   }
@@ -500,25 +558,40 @@ export async function callAIGenerateTheme(body: {
   category?: "soldado" | "cfo";
   keywords?: string;
 }): Promise<{ title: string; motivatingText: string }> {
-  // 1. Try to fetch backend server endpoint
-  try {
-    const response = await fetch("/api/ai/generate-theme", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  // 1. Try to fetch backend server endpoint with a robust retry mechanism
+  const maxRetries = 2;
+  let fetchResponse: Response | null = null;
+  let lastError: any = null;
 
-    const isHtml = await isHtmlResponse(response);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fetchResponse = await fetch("/api/ai/generate-theme", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      break; // Success, break out of retry loop
+    } catch (err: any) {
+      console.warn(`[Generate Theme API] Tentativa ${attempt} de se comunicar com o servidor falhou:`, err);
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  }
 
-    if (response.ok && !isHtml) {
-      return preprocessGeminiResponse(await response.json());
+  if (fetchResponse) {
+    const isHtml = await isHtmlResponse(fetchResponse);
+
+    if (fetchResponse.ok && !isHtml) {
+      return preprocessGeminiResponse(await fetchResponse.json());
     } else if (isHtml) {
       throw new Error(
         "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML) durante a geração de tema. Por favor, aguarde alguns instantes e tente novamente."
       );
     } else {
       try {
-        const errJson = await response.json();
+        const errJson = await fetchResponse.json();
         if (errJson && errJson.error) {
           throw new Error(errJson.error);
         }
@@ -527,14 +600,13 @@ export async function callAIGenerateTheme(body: {
           throw e;
         }
       }
-      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
+      throw new Error(`O servidor retornou um status de erro: ${fetchResponse.status}`);
     }
-  } catch (err: any) {
-    console.warn("Backend server returned an error.", err);
+  } else {
     const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
     if (!hasClientKey) {
       throw new Error(
-        err?.message || "Não foi possível se comunicar com o servidor de geração de temas e nenhuma chave local está configurada."
+        `Não foi possível se comunicar com o servidor de geração de temas após tentativas. Erro: ${lastError?.message || "Failed to fetch"}`
       );
     }
   }

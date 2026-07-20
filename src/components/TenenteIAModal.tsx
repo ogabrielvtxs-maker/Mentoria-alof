@@ -79,6 +79,28 @@ export default function TenenteIAModal({ isOpen, onClose, topicTitle, subjectTit
     };
   }, []);
 
+  // Reset modal state when opening or when the topic/subject changes
+  useEffect(() => {
+    if (isOpen) {
+      setResponseText("");
+      setContextText("");
+      setErrorMsg("");
+      setSavedToLibrary(false);
+      setCopied(false);
+      setFlashcards([]);
+      setCurrentFlashcardIndex(0);
+      setShowAnswer(false);
+      setCurrentAction("");
+      setLoading(false);
+      setOcrLoading(false);
+      setIsSpeaking(false);
+      setIsSpeechPaused(false);
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    }
+  }, [isOpen, topicTitle, subjectTitle]);
+
   if (!isOpen) return null;
 
   const triggerAIAction = async (action: "explain" | "summarize" | "questions" | "flashcards" | "ask_doubt") => {

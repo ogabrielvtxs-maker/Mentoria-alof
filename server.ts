@@ -261,7 +261,25 @@ Responda UNICAMENTE com um objeto JSON estruturado contendo exatamente as seguin
       let responseSchema: any = undefined;
 
       if (action === "explain") {
-        prompt = `Explique detalhadamente o assunto "${topic}" dentro da disciplina de "${subject}". \n\n${contextText ? `Dúvida específica ou questão do aluno: ${contextText}\n\n` : ""}Por favor, inclua:\n1. Conceito principal e base jurídica/teórica aplicável\n2. Pontos de atenção e possíveis pegadinhas que a banca costuma cobrar nos concursos de Oficial (CFO) e Soldado da Bahia\n3. Um exemplo prático ou mnemônico didático passo a passo para fixação absoluta.`;
+        if (contextText) {
+          prompt = `O aluno possui uma dúvida específica ou enviou uma questão sobre o assunto "${topic}" dentro da disciplina de "${subject}".
+
+DÚVIDA / QUESTÃO DO ALUNO:
+"${contextText}"
+
+Por favor, responda de forma extremamente cirúrgica, didática e detalhada focando estritamente na dúvida ou questão enviada pelo aluno. Não faça uma explicação genérica do assunto se a dúvida for específica.
+Inclua:
+1. Explicação e resolução detalhada da dúvida ou questão do aluno, fundamentada na lei seca e jurisprudência aplicável ao concurso CFO/Soldado PMBA.
+2. Análise do contexto de onde essa dúvida se insere no assunto "${topic}" e disciplina "${subject}".
+3. Mnemônico, macete didático ou dica prática para fixação absoluta do conceito abordado na dúvida do aluno.`;
+        } else {
+          prompt = `Explique detalhadamente o assunto "${topic}" dentro da disciplina de "${subject}".
+
+Por favor, inclua:
+1. Conceito principal e base jurídica/teórica aplicável ao concurso CFO/Soldado PMBA.
+2. Pontos de atenção e possíveis pegadinhas que a banca costuma cobrar nas provas da Bahia.
+3. Um exemplo prático ou mnemônico didático passo a passo para fixação absoluta.`;
+        }
       } else if (action === "summarize") {
         prompt = `Monte um resumo enciclopédico, extremamente robusto, ultra-detalhado e exaustivo para o assunto "${topic}" dentro da disciplina de "${subject}", focado com precisão cirúrgica no conteúdo programático oficial e nas recorrências reais e históricas das provas de Soldado e Oficial (CFO) da Polícia Militar da Bahia (PMBA).
 
@@ -309,17 +327,19 @@ Diretriz de escrita e formatação obrigatória:
 
         Certifique-se de que cada flashcard seja separado por uma linha "---" e use exatamente as tags "Frente:" e "Verso:".`;
       } else if (action === "ask_doubt") {
-        prompt = `Responda de forma extremamente didática, atenciosa e esclarecedora à seguinte dúvida conceitual ou análise de questão enviada pelo aluno sobre o assunto "${topic}" da disciplina de "${subject}":
-        
-        ---
-        DÚVIDA / QUESTÃO DO ALUNO:
-        "${contextText || "Por favor, explique os pontos mais difíceis deste assunto."}"
-        ---
-        
-        Por favor:
-        1. Desmantele a dúvida passo a passo, explicando o conceito de forma simples, objetiva e livre de jargões bélicos desnecessários.
-        2. Se for uma questão colada pelo aluno, indique qual é a resposta correta, explicando o erro das demais e fundamentando diretamente nos artigos de lei (Constituição, Código Penal, Estatuto da PMBA, etc.).
-        3. Forneça uma dica de memorização, mnemônico pedagógico ou macete prático para o aluno nunca mais esquecer este assunto e garantir seu ponto na prova.`;
+        prompt = `Responda de forma extremamente didática, atenciosa e esclarecedora focado estritamente na seguinte dúvida conceitual ou análise de questão enviada pelo aluno sobre o assunto "${topic}" da disciplina de "${subject}".
+
+IMPORTANTE: Foque inteiramente em responder à dúvida ou questão fornecida abaixo. Não desvie para outros tópicos gerais do assunto "${topic}" que não tenham relação direta com o que foi perguntado.
+
+---
+DÚVIDA / QUESTÃO DO ALUNO:
+"${contextText || "Por favor, explique os pontos mais difíceis deste assunto."}"
+---
+
+Por favor:
+1. Desmantele a dúvida passo a passo, explicando o conceito de forma simples, objetiva, abordando exatamente o que o aluno perguntou e livre de jargões bélicos desnecessários.
+2. Se for uma questão colada pelo aluno, indique claramente qual é a resposta correta, explicando detalhadamente o erro de cada uma das demais alternativas e fundamentando diretamente nos artigos de lei (Constituição, Código Penal, Estatuto da PMBA, etc.).
+3. Forneça uma dica de memorização, mnemônico pedagógico ou macete prático focado na resolução desta dúvida específica para o aluno nunca mais esquecer.`;
       } else if (action === "generate_report") {
         prompt = `Você é o Mentor de Estudos IA, coordenador pedagógico e tutor de alto rendimento. Redija um relatório de desempenho semanal personalizado e detalhado para o aluno "${studentName || "Estudante"}" na semana de número ${week || "atual"}. 
         Use um tom altamente profissional, didático, focado na aprovação, estimulante e estratégico, sem jargões militares ou termos como 'recruta', 'tático' ou 'diretriz militar'. 
