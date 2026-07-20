@@ -65,6 +65,13 @@ async function generateContentWithRetryClient(
             err.message.includes("temporary") ||
             err.message.includes("UNAVAILABLE")));
 
+      // If we encounter ANY error and search tools are active, let's strip tools to attempt a clean standard recovery
+      if (params.config && params.config.tools) {
+        console.warn("[AI Client] Error detected while using search tools (grounding). Disabling search tools for subsequent attempts.");
+        params.config = { ...params.config };
+        delete params.config.tools;
+      }
+
       if (isTransient && attempt < maxRetries) {
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay *= 2;

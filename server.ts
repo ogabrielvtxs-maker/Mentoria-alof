@@ -43,6 +43,13 @@ async function generateContentWithRetry(
           err.message.includes("UNAVAILABLE")
         ));
       
+      // If we encounter ANY error and search tools are active, let's strip tools to attempt a clean standard recovery
+      if (params.config && params.config.tools) {
+        console.warn(`[AI] Error detected while using search tools (grounding). Disabling search tools for subsequent attempts.`);
+        params.config = { ...params.config };
+        delete params.config.tools;
+      }
+
       if (isTransient && attempt < maxRetries) {
         console.warn(`[AI] Transient error (attempt ${attempt}/${maxRetries}): ${err.message || err}. Retrying in ${delay}ms...`);
         await new Promise((resolve) => setTimeout(resolve, delay));
