@@ -113,9 +113,25 @@ export async function callAIAction(body: {
 
     if (response.ok && !(await isHtmlResponse(response))) {
       return preprocessGeminiResponse(await response.json());
+    } else if (!response.ok && !(await isHtmlResponse(response))) {
+      // Backend returned an error response (like a 500 or 400 with a descriptive message)
+      try {
+        const errJson = await response.json();
+        if (errJson && errJson.error) {
+          throw new Error(errJson.error);
+        }
+      } catch (e: any) {
+        if (e.message && e.message !== "Unexpected end of JSON input") {
+          throw e;
+        }
+      }
     }
-  } catch (err) {
-    console.warn("Backend server not available. Falling back to client-side direct Gemini call...", err);
+  } catch (err: any) {
+    console.warn("Backend server returned an error.", err);
+    // If it's a descriptive key error or explicit error from backend, propagate it
+    if (err && err.message) {
+      throw err;
+    }
   }
 
   // 2. Client-side fallback via @google/genai SDK
@@ -280,9 +296,23 @@ export async function callAIOcr(body: { image: string; mimeType?: string }): Pro
 
     if (response.ok && !(await isHtmlResponse(response))) {
       return preprocessGeminiResponse(await response.json());
+    } else if (!response.ok && !(await isHtmlResponse(response))) {
+      try {
+        const errJson = await response.json();
+        if (errJson && errJson.error) {
+          throw new Error(errJson.error);
+        }
+      } catch (e: any) {
+        if (e.message && e.message !== "Unexpected end of JSON input") {
+          throw e;
+        }
+      }
     }
-  } catch (err) {
-    console.warn("Backend server not available. Falling back to client-side OCR direct Gemini call...", err);
+  } catch (err: any) {
+    console.warn("Backend server returned an error.", err);
+    if (err && err.message) {
+      throw err;
+    }
   }
 
   // 2. Client-side fallback via @google/genai SDK
@@ -338,9 +368,23 @@ export async function callAICorrectEssay(body: {
 
     if (response.ok && !(await isHtmlResponse(response))) {
       return preprocessGeminiResponse(await response.json());
+    } else if (!response.ok && !(await isHtmlResponse(response))) {
+      try {
+        const errJson = await response.json();
+        if (errJson && errJson.error) {
+          throw new Error(errJson.error);
+        }
+      } catch (e: any) {
+        if (e.message && e.message !== "Unexpected end of JSON input") {
+          throw e;
+        }
+      }
     }
-  } catch (err) {
-    console.warn("Backend server not available. Falling back to client-side direct essay correction...", err);
+  } catch (err: any) {
+    console.warn("Backend server returned an error.", err);
+    if (err && err.message) {
+      throw err;
+    }
   }
 
   // 2. Client-side fallback via @google/genai SDK
@@ -438,9 +482,23 @@ export async function callAIGenerateTheme(body: {
 
     if (response.ok && !(await isHtmlResponse(response))) {
       return preprocessGeminiResponse(await response.json());
+    } else if (!response.ok && !(await isHtmlResponse(response))) {
+      try {
+        const errJson = await response.json();
+        if (errJson && errJson.error) {
+          throw new Error(errJson.error);
+        }
+      } catch (e: any) {
+        if (e.message && e.message !== "Unexpected end of JSON input") {
+          throw e;
+        }
+      }
     }
-  } catch (err) {
-    console.warn("Backend server not available. Falling back to client-side direct theme generation...", err);
+  } catch (err: any) {
+    console.warn("Backend server returned an error.", err);
+    if (err && err.message) {
+      throw err;
+    }
   }
 
   // 2. Client-side fallback via @google/genai SDK
