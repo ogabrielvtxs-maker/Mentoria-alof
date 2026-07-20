@@ -1,0 +1,4483 @@
+import React, { useState, useEffect } from "react";
+import { User, StudyCycle, WeeklyReport, PerformanceLog, PasswordResetRequest, SyllabusSection, SyllabusItem, EssaySubmission, EssayTheme } from "../types";
+import PerformanceStats from "./PerformanceStats";
+import ContentArea from "./ContentArea";
+import { 
+  Users, 
+  Calendar, 
+  BarChart2, 
+  Mail, 
+  Check, 
+  Database, 
+  Upload,
+  Download,
+  ExternalLink,
+  X, 
+  Shield, 
+  BookOpen, 
+  AlertCircle, 
+  Send, 
+  Award, 
+  Trash, 
+  Edit3, 
+  UserPlus, 
+  Plus, 
+  Minus,
+  FileText,
+  RefreshCw,
+  Bell,
+  Sparkles,
+  Loader2,
+  Key,
+  CheckCircle,
+  ChevronDown
+} from "lucide-react";
+import { 
+  saveStudyCycleToFirestore, 
+  deleteStudyCycleFromFirestore,
+  fetchStudyCycleFromFirestore,
+  saveReportToFirestore, 
+  deleteReportFromFirestore,
+  fetchAllReportsFromFirestore,
+  fetchPrivateStudentNotesFromFirestore,
+  savePrivateStudentNotesToFirestore,
+  googleSignInWithGmail,
+  fetchPasswordResetRequestsFromFirestore,
+  deletePasswordResetRequestFromFirestore,
+  savePasswordResetRequestToFirestore,
+  adminUpdateUserPassword,
+  fetchSyllabusProgressFromFirestore,
+  saveSyllabusProgressToFirestore,
+  saveUserToFirestore,
+  fetchPerformanceLogsFromFirestore,
+  savePerformanceLogToFirestore,
+  fetchAllEssaySubmissions,
+  saveEssaySubmissionToFirestore,
+  deleteEssaySubmissionFromFirestore,
+  saveEssayThemeToFirestore,
+  fetchEssayThemesFromFirestore,
+  deleteEssayThemeFromFirestore
+} from "../lib/firebase";
+import { sendGmailMessage } from "../lib/gmail";
+import { stripMarkdownAsterisks } from "../lib/textCleanup";
+import { callAIAction, callAICorrectEssay, callAIGenerateTheme } from "../utils/aiService";
+import { initialSyllabusData } from "../data/syllabusData";
+import { raioXCfoData, RaioXSubject, RaioXTopic } from "../data/raioxData";
+
+const calculateDefaultEndDate = (planType: string, baseDateStr: string) => {
+  if (!baseDateStr) return "";
+  try {
+    const baseDate = new Date(baseDateStr + "T12:00:00");
+    if (isNaN(baseDate.getTime())) return "";
+    if (planType === "mensal") {
+      baseDate.setMonth(baseDate.getMonth() + 1);
+      return baseDate.toISOString().split("T")[0];
+    } else if (planType === "trimestral") {
+      baseDate.setMonth(baseDate.getMonth() + 3);
+      return baseDate.toISOString().split("T")[0];
+    }
+  } catch (e) {
+    console.error("Error calculating end date:", e);
+  }
+  return "";
+};
+
+interface AdminPanelProps {
+  currentUser: User;
+  allUsers: User[];
+  onUpdateUser: (updatedUser: User) => void;
+  onDeleteUser: (userId: string) => void;
+  onAddUser?: (newUser: User) => void;
+}
+
+export default function AdminPanel({ currentUser, allUsers, onUpdateUser, onDeleteUser, onAddUser }: AdminPanelProps) {
+  const [activeSubTab, setActiveSubTab] = useState<"users" | "cycle" | "stats" | "correio" | "content" | "syllabus_validation" | "redacoes" | "themes" | "backup">("users");
+  
+  // Validador category state (CFO vs Soldado)
+  const [valCategory, setValCategory] = useState<"cfo" | "soldado">("cfo");
+
+  // Essay Themes management states
+  const [essayThemes, setEssayThemes] = useState<EssayTheme[]>([]);
+  const [loadingThemes, setLoadingThemes] = useState<boolean>(false);
+  const [themeTitle, setThemeTitle] = useState<string>("");
+  const [themeMotivatingText, setThemeMotivatingText] = useState<string>("");
+  const [themeCategory, setThemeCategory] = useState<"soldado" | "cfo" | "geral">("geral");
+  const [isGeneratingTheme, setIsGeneratingTheme] = useState<boolean>(false);
+  const [isSavingTheme, setIsSavingTheme] = useState<boolean>(false);
+
+  // Student study cycles monitor state
+  const [studentCycles, setStudentCycles] = useState<Record<string, StudyCycle | null>>({});
+  const [loadingCycles, setLoadingCycles] = useState<boolean>(false);
+  const [cycleSearch, setCycleSearch] = useState<string>("");
+
+  // Backup and restore state
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState<boolean>(false);
+  const [restoreProgress, setRestoreProgress] = useState<string>("");
+
+  // Firebase Auth Method Disabled Warning
+  const [showFirebaseAuthWarning, setShowFirebaseAuthWarning] = useState<boolean>(() => {
+    return localStorage.getItem("firebase_auth_method_disabled") === "true";
+  });
+
+  // Student essay submissions management state
+  const [allEssaySubmissions, setAllEssaySubmissions] = useState<EssaySubmission[]>([]);
+  const [loadingEssays, setLoadingEssays] = useState<boolean>(false);
+  const [selectedEssay, setSelectedEssay] = useState<EssaySubmission | null>(null);
+  const [essayStatusFilter, setEssayStatusFilter] = useState<"all" | "pending" | "corrected">("all");
+  const [essaySearchQuery, setEssaySearchQuery] = useState<string>("");
+
+  // Essay grading form states
+  const [editThemeScore, setEditThemeScore] = useState<number>(0);
+  const [editCohesionScore, setEditCohesionScore] = useState<number>(0);
+  const [editArgumentScore, setEditArgumentScore] = useState<number>(0);
+  const [editGrammarScore, setEditGrammarScore] = useState<number>(0);
+  const [editThemeFeedback, setEditThemeFeedback] = useState<string>("");
+  const [editCohesionFeedback, setEditCohesionFeedback] = useState<string>("");
+  const [editArgumentFeedback, setEditArgumentFeedback] = useState<string>("");
+  const [editGrammarFeedback, setEditGrammarFeedback] = useState<string>("");
+  const [editOverallFeedback, setEditOverallFeedback] = useState<string>("");
+  const [editRewrittenText, setEditRewrittenText] = useState<string>("");
+  const [isSavingCorrection, setIsSavingCorrection] = useState<boolean>(false);
+  const [isAiRunningCopilot, setIsAiRunningCopilot] = useState<boolean>(false);
+
+  // Student Private Notes states
+  const [activeNotesStudentId, setActiveNotesStudentId] = useState<string | null>(null);
+  const [currentNotesText, setCurrentNotesText] = useState<string>("");
+  const [loadingNotes, setLoadingNotes] = useState<boolean>(false);
+  const [savingNotes, setSavingNotes] = useState<boolean>(false);
+
+  // Syllabus Validation & Alignment states
+  const [valSyllabusSubTab, setValSyllabusSubTab] = useState<"edital" | "raiox">("edital");
+  const [valRaioXCfo, setValRaioXCfo] = useState<RaioXSubject[]>(() => {
+    const saved = localStorage.getItem("custom_raiox_cfo_data");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return raioXCfoData;
+      }
+    }
+    return raioXCfoData;
+  });
+  const [raioxEditSubject, setRaioxEditSubject] = useState<string>("Todos");
+  const [raioxEditSearch, setRaioxEditSearch] = useState<string>("");
+
+  const [valSelectedStudentId, setValSelectedStudentId] = useState<string>("");
+  const [valSyllabus, setValSyllabus] = useState<SyllabusSection[]>([]);
+  const [valLoading, setValLoading] = useState<boolean>(false);
+  const [valSaving, setValSaving] = useState<boolean>(false);
+  const [valSearch, setValSearch] = useState<string>("");
+  const [valSubjectFilter, setValSubjectFilter] = useState<string>("Todos");
+  const [valNewTopicTitleMap, setValNewTopicTitleMap] = useState<{ [sectionId: string]: string }>({});
+  const [valStatusMsg, setValStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Student Inactivity alerts state
+  const [inactivityAlerts, setInactivityAlerts] = useState<{ student: User; daysInactive: number; lastActiveDate: string | null }[]>([]);
+  const [showInactivityDetails, setShowInactivityDetails] = useState<boolean>(false);
+  
+  // State for selected student to view/edit cycle or stats
+  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [isCreateCycleOpen, setIsCreateCycleOpen] = useState<boolean>(false);
+
+  // User creation states
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserAccessSoldado, setNewUserAccessSoldado] = useState(true);
+  const [newUserAccessCFO, setNewUserAccessCFO] = useState(false);
+  const [newUserIsAdmin, setNewUserIsAdmin] = useState(false);
+  const [newUserIsApproved, setNewUserIsApproved] = useState(true);
+  const [newUserPlan, setNewUserPlan] = useState<"mensal" | "trimestral" | "indefinido">("indefinido");
+  const [newUserPlanEndDate, setNewUserPlanEndDate] = useState<string>("");
+  const [newUserCreatedAt, setNewUserCreatedAt] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  const handleNewUserPlanChange = (val: "mensal" | "trimestral" | "indefinido") => {
+    setNewUserPlan(val);
+    if (val !== "indefinido") {
+      setNewUserPlanEndDate(calculateDefaultEndDate(val, newUserCreatedAt));
+    } else {
+      setNewUserPlanEndDate("");
+    }
+  };
+
+  const handleNewUserCreatedAtChange = (dateVal: string) => {
+    setNewUserCreatedAt(dateVal);
+    if (newUserPlan !== "indefinido") {
+      setNewUserPlanEndDate(calculateDefaultEndDate(newUserPlan, dateVal));
+    }
+  };
+
+  const handleCreateUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+      setNotification({ type: "error", message: "Por favor, preencha nome, e-mail e senha do aluno." });
+      return;
+    }
+
+    const emailLower = newUserEmail.toLowerCase().trim();
+    const emailExists = allUsers.some(u => u && u.email && u.email.toLowerCase().trim() === emailLower);
+    if (emailExists) {
+      setNotification({ type: "error", message: "Este e-mail já está cadastrado na plataforma." });
+      return;
+    }
+
+    const newUser: User = {
+      id: "usr_" + Math.random().toString(36).substring(2, 11),
+      name: newUserName.trim(),
+      email: emailLower,
+      password: newUserPassword.trim(),
+      accessSoldado: newUserAccessSoldado,
+      accessCFO: newUserAccessCFO,
+      isAdmin: newUserIsAdmin,
+      isApproved: newUserIsApproved,
+      createdAt: newUserCreatedAt ? new Date(newUserCreatedAt + "T12:00:00").toISOString() : new Date().toISOString(),
+      plan: newUserPlan,
+      planEndDate: newUserPlanEndDate ? new Date(newUserPlanEndDate + "T12:00:00").toISOString() : ""
+    };
+
+    if (onAddUser) {
+      onAddUser(newUser);
+      setNotification({ type: "success", message: `Guerreiro ${newUser.name} criado com sucesso!` });
+      // Reset form
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setNewUserAccessSoldado(true);
+      setNewUserAccessCFO(false);
+      setNewUserIsAdmin(false);
+      setNewUserIsApproved(true);
+      setNewUserPlan("indefinido");
+      setNewUserPlanEndDate("");
+      setNewUserCreatedAt(new Date().toISOString().split("T")[0]);
+      setShowCreateForm(false);
+    } else {
+      setNotification({ type: "error", message: "Função de criação de aluno não disponível." });
+    }
+  };
+
+  // Cycle builder states
+  const [targetWeek, setTargetWeek] = useState<number>(1);
+  const [adminSelectedWeek, setAdminSelectedWeek] = useState<number>(1);
+  const [cycleDetails, setCycleDetails] = useState<string>("");
+  const [cycleDays, setCycleDays] = useState<{
+    dayNumber: number;
+    questionTarget: number;
+    subjects: string[];
+    notes?: string;
+  }[]>([
+    { dayNumber: 1, questionTarget: 15, subjects: ["Língua Portuguesa: Crase", "Direito Constitucional: Artigo 5º"], notes: "" },
+    { dayNumber: 2, questionTarget: 15, subjects: ["Língua Inglesa: Plurais", "Direito Penal: Consumação e Tentativa"], notes: "" },
+    { dayNumber: 3, questionTarget: 20, subjects: ["Matemática: Progressão Aritmética", "Informática: Word e Writer"], notes: "" },
+    { dayNumber: 4, questionTarget: 15, subjects: ["Direitos Humanos: Declaração 1948", "História da Bahia: Canudos"], notes: "" },
+    { dayNumber: 5, questionTarget: 20, subjects: ["Direito Administrativo: Princípios", "Geografia da Bahia: Climatologia"], notes: "" },
+    { dayNumber: 6, questionTarget: 15, subjects: ["Direito Penal Militar: Motim", "Matemática: Matrizes"], notes: "" },
+    { dayNumber: 7, questionTarget: 30, subjects: ["Simulado Geral de Revisão"], notes: "" }
+  ]);
+
+  // Mail / Report states
+  const [reportWeek, setReportWeek] = useState<number>(1);
+  const [reportContent, setReportContent] = useState<string>("");
+  const [existingReports, setExistingReports] = useState<WeeklyReport[]>([]);
+  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [reportToDeleteId, setReportToDeleteId] = useState<string | null>(null);
+
+  // State for delete confirmation modal (users and library themes)
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    isOpen: boolean;
+    type: "user" | "theme";
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmModal) return;
+    const { type, id } = deleteConfirmModal;
+    
+    try {
+      if (type === "user") {
+        onDeleteUser(id);
+        setNotification({ type: "success", message: "Guerreiro excluído com sucesso da plataforma!" });
+      } else if (type === "theme") {
+        await handleDeleteThemeDirectly(id);
+        setNotification({ type: "success", message: "Tema de redação excluído com sucesso!" });
+      }
+    } catch (err: any) {
+      setNotification({ type: "error", message: `Erro ao excluir: ${err.message}` });
+    } finally {
+      setDeleteConfirmModal(null);
+    }
+  };
+
+  // Email sending loading state
+  const [emailSendingId, setEmailSendingId] = useState<string | null>(null);
+
+  const handleSendPasswordEmail = async (studentUser: User) => {
+    try {
+      setEmailSendingId(studentUser.id);
+      
+      // Get the cached Gmail access token
+      let token = localStorage.getItem("gmail_oauth_token");
+      if (!token) {
+        // If not found, prompt them to sign in with Google to authorize the sending!
+        const result = await googleSignInWithGmail();
+        if (result?.accessToken) {
+          token = result.accessToken;
+        } else {
+          throw new Error("Você precisa autorizar o acesso à sua conta do Google/Gmail para enviar e-mails de recuperação.");
+        }
+      }
+
+      const subject = "🔑 Suas Credenciais de Acesso - Plataforma PMBA";
+      const bodyHtml = `
+        <div style="font-family: Arial, sans-serif; background-color: #070b14; color: #f1f5f9; padding: 30px; border-radius: 12px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
+          <div style="text-align: center; border-bottom: 2px solid #fbbf24; padding-bottom: 20px; margin-bottom: 25px;">
+            <h1 style="color: #fbbf24; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Plataforma de Estudos PMBA</h1>
+            <p style="color: #94a3b8; margin: 5px 0 0 0; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">CFO & Soldado - Preparação de Elite</p>
+          </div>
+          
+          <p style="font-size: 14px; line-height: 1.6; color: #f1f5f9;">Olá <strong>${studentUser.name}</strong>,</p>
+          
+          <p style="font-size: 14px; line-height: 1.6; color: #e2e8f0;">A sua conta de acesso à Plataforma de Estudos da PMBA foi homologada e está ativa! Seguem abaixo as suas credenciais de acesso oficiais para você iniciar seus estudos:</p>
+          
+          <div style="background-color: #0f172a; border: 1px solid #334155; padding: 20px; border-radius: 8px; margin: 25px 0;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr>
+                <td style="padding: 6px 0; color: #94a3b8; font-weight: bold; width: 120px;">E-mail:</td>
+                <td style="padding: 6px 0; color: #f1f5f9; font-family: monospace;">${studentUser.email}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #94a3b8; font-weight: bold;">Senha:</td>
+                <td style="padding: 6px 0; color: #fbbf24; font-family: monospace; font-weight: bold; font-size: 16px;">${studentUser.password || "<i>(Redefina usando a opção 'Esqueceu a senha?' na tela de login)</i>"}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #94a3b8; font-weight: bold;">Status:</td>
+                <td style="padding: 6px 0; color: #10b981; font-weight: bold;">ATIVO & HOMOLOGADO</td>
+              </tr>
+            </table>
+          </div>
+          
+          <div style="text-align: center; margin-top: 35px; border-top: 1px solid #1e293b; padding-top: 20px;">
+            <p style="font-size: 11px; color: #64748b; margin: 0;">Este é um e-mail oficial enviado via integração de API do Gmail da Plataforma de Estudos PMBA.</p>
+          </div>
+        </div>
+      `;
+
+      const success = await sendGmailMessage(token, studentUser.email, subject, bodyHtml);
+      if (success) {
+        setNotification({ type: "success", message: `E-mail de credenciais enviado com sucesso para ${studentUser.email}!` });
+      } else {
+        throw new Error("Erro no envio da API do Gmail. Verifique as permissões de OAuth ou refaça a autorização.");
+      }
+    } catch (error: any) {
+      console.error(error);
+      setNotification({ type: "error", message: "Erro ao enviar e-mail: " + (error.message || error) });
+    } finally {
+      setEmailSendingId(null);
+    }
+  };
+
+  const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState<boolean>(false);
+  const [editedPasswords, setEditedPasswords] = useState<Record<string, string>>({});
+  const [updatingPasswordUserId, setUpdatingPasswordUserId] = useState<string | null>(null);
+  const [showPlanAlertsDetails, setShowPlanAlertsDetails] = useState<boolean>(true);
+
+  const loadPasswordResetRequests = async () => {
+    setLoadingRequests(true);
+    try {
+      const requests = await fetchPasswordResetRequestsFromFirestore();
+      setResetRequests(requests.filter(r => r.status === "pending"));
+    } catch (error) {
+      console.error("Erro ao carregar solicitações de redefinição de senha:", error);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
+  const handleSavePassword = async (targetUser: User, newPassword: string) => {
+    if (!newPassword || newPassword.trim().length < 6) {
+      setNotification({ type: "error", message: "A senha deve ter pelo menos 6 caracteres." });
+      return;
+    }
+
+    setUpdatingPasswordUserId(targetUser.id);
+    const oldPassword = targetUser.password || "";
+    try {
+      await adminUpdateUserPassword(
+        targetUser.email,
+        oldPassword,
+        newPassword.trim(),
+        currentUser.email,
+        currentUser.password || ""
+      );
+
+      const updatedUser = { ...targetUser, password: newPassword.trim() };
+      onUpdateUser(updatedUser);
+
+      setEditedPasswords(prev => {
+        const copy = { ...prev };
+        delete copy[targetUser.id];
+        return copy;
+      });
+
+      setNotification({ type: "success", message: `Senha do aluno ${targetUser.name} atualizada com sucesso!` });
+    } catch (err: any) {
+      console.error(err);
+      setNotification({ type: "error", message: err.message || "Erro ao redefinir senha do aluno." });
+    } finally {
+      setUpdatingPasswordUserId(null);
+    }
+  };
+
+  useEffect(() => {
+    loadPasswordResetRequests();
+  }, []);
+
+  // Auto dismiss notifications
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  // Load syllabus for validation when active tab, selected student, or category changes
+  useEffect(() => {
+    if (activeSubTab !== "syllabus_validation") return;
+
+    const loadValidationSyllabus = async () => {
+      setValLoading(true);
+      setValStatusMsg(null);
+      try {
+        if (valSelectedStudentId === "template") {
+          const savedTemplate = localStorage.getItem("syllabus_template_" + valCategory);
+          if (savedTemplate) {
+            setValSyllabus(JSON.parse(savedTemplate));
+          } else {
+            const cleaned = initialSyllabusData.map(section => {
+              if (section.category === valCategory) {
+                const filteredTopics = section.topics.filter(topic => {
+                  const titleLower = topic.title.toLowerCase();
+                  return !(
+                    titleLower.includes("lei de acesso") ||
+                    titleLower.includes("acesso à informação") ||
+                    titleLower.includes("12.527") ||
+                    titleLower.includes("obsoleto")
+                  );
+                });
+                return { ...section, topics: filteredTopics };
+              }
+              return section;
+            });
+            setValSyllabus(cleaned);
+          }
+        } else {
+          const fetched = await fetchSyllabusProgressFromFirestore(valSelectedStudentId);
+          if (fetched && fetched.length > 0) {
+            // Also clean on load to protect the user experience from old cached values
+            const cleaned = fetched.map(section => {
+              if (section.category === valCategory) {
+                const filteredTopics = section.topics.filter(topic => {
+                  const titleLower = topic.title.toLowerCase();
+                  return !(
+                    titleLower.includes("lei de acesso") ||
+                    titleLower.includes("acesso à informação") ||
+                    titleLower.includes("12.527") ||
+                    titleLower.includes("obsoleto")
+                  );
+                });
+                return { ...section, topics: filteredTopics };
+              }
+              return section;
+            });
+            setValSyllabus(cleaned);
+          } else {
+            // Load clean default for the selected student
+            const cleanedDefault = initialSyllabusData.map(section => {
+              if (section.category === valCategory) {
+                const filteredTopics = section.topics.filter(topic => {
+                  const titleLower = topic.title.toLowerCase();
+                  return !(
+                    titleLower.includes("lei de acesso") ||
+                    titleLower.includes("acesso à informação") ||
+                    titleLower.includes("12.527") ||
+                    titleLower.includes("obsoleto")
+                  );
+                });
+                return { ...section, topics: filteredTopics };
+              }
+              return section;
+            });
+            setValSyllabus(cleanedDefault);
+            setValStatusMsg({ type: "error", text: `Nenhum progresso de edital encontrado no Firestore para este aluno. Carregando modelo padrão limpo do ${valCategory.toUpperCase()} PMBA.` });
+          }
+        }
+      } catch (err) {
+        console.error("Error loading syllabus for validation:", err);
+        setValStatusMsg({ type: "error", text: "Erro ao carregar o edital verticalizado." });
+      } finally {
+        setValLoading(false);
+      }
+    };
+
+    loadValidationSyllabus();
+  }, [valSelectedStudentId, activeSubTab, valCategory]);
+
+  // Load study cycles for approved students
+  useEffect(() => {
+    if (activeSubTab !== "cycle") return;
+    
+    const loadCycles = async () => {
+      setLoadingCycles(true);
+      const approvedStudents = allUsers.filter(u => u.isApproved && !u.isAdmin);
+      const cyclesMap: Record<string, StudyCycle | null> = {};
+      
+      try {
+        await Promise.all(
+          approvedStudents.map(async (student) => {
+            const cycle = await fetchStudyCycleFromFirestore(student.id);
+            cyclesMap[student.id] = cycle;
+          })
+        );
+        setStudentCycles(cyclesMap);
+      } catch (err) {
+        console.error("Erro ao carregar ciclos dos alunos:", err);
+      } finally {
+        setLoadingCycles(false);
+      }
+    };
+    
+    loadCycles();
+  }, [activeSubTab, allUsers]);
+
+  // Load essay submissions for all students
+  useEffect(() => {
+    if (activeSubTab !== "redacoes") return;
+    
+    const loadAllEssays = async () => {
+      setLoadingEssays(true);
+      try {
+        const essays = await fetchAllEssaySubmissions();
+        // Sort by newest first
+        essays.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setAllEssaySubmissions(essays);
+      } catch (err) {
+        console.error("Erro ao carregar redações dos alunos:", err);
+      } finally {
+        setLoadingEssays(false);
+      }
+    };
+    
+    loadAllEssays();
+  }, [activeSubTab]);
+
+  // Load all essay themes from database
+  useEffect(() => {
+    if (activeSubTab !== "themes" && activeSubTab !== "redacoes") return;
+    
+    const loadAllThemes = async () => {
+      setLoadingThemes(true);
+      try {
+        const themes = await fetchEssayThemesFromFirestore();
+        setEssayThemes(themes);
+      } catch (err) {
+        console.error("Erro ao carregar temas de redação:", err);
+      } finally {
+        setLoadingThemes(false);
+      }
+    };
+    
+    loadAllThemes();
+  }, [activeSubTab]);
+
+  // Save custom theme manually or after AI generation
+  const handleSaveTheme = async () => {
+    if (!themeTitle.trim()) {
+      alert("Por favor, digite ou gere um título para o tema.");
+      return;
+    }
+
+    setIsSavingTheme(true);
+    try {
+      const newTheme: EssayTheme = {
+        id: `theme_${Date.now()}`,
+        title: themeTitle.trim(),
+        motivatingText: themeMotivatingText.trim() || undefined,
+        category: themeCategory,
+        createdAt: new Date().toISOString()
+      };
+
+      await saveEssayThemeToFirestore(newTheme);
+      setEssayThemes((prev) => [newTheme, ...prev]);
+      setThemeTitle("");
+      setThemeMotivatingText("");
+      alert("Tema de redação salvo com sucesso!");
+    } catch (err: any) {
+      alert("Erro ao salvar tema: " + err.message);
+    } finally {
+      setIsSavingTheme(false);
+    }
+  };
+
+  // Delete theme from DB
+  const handleDeleteTheme = (themeId: string) => {
+    const foundTheme = essayThemes.find(t => t.id === themeId);
+    setDeleteConfirmModal({
+      isOpen: true,
+      type: "theme",
+      id: themeId,
+      name: foundTheme ? foundTheme.title : "Tema de Redação"
+    });
+  };
+
+  const handleDeleteThemeDirectly = async (themeId: string) => {
+    try {
+      await deleteEssayThemeFromFirestore(themeId);
+      setEssayThemes((prev) => prev.filter(t => t.id !== themeId));
+    } catch (err: any) {
+      setNotification({ type: "error", message: "Erro ao excluir tema: " + err.message });
+    }
+  };
+
+  // Trigger AI Theme Generator
+  const handleGenerateThemeWithAI = async () => {
+    setIsGeneratingTheme(true);
+    try {
+      const result = await callAIGenerateTheme({
+        category: themeCategory === "geral" ? undefined : (themeCategory as "soldado" | "cfo"),
+        keywords: themeTitle.trim() || undefined
+      });
+
+      setThemeTitle(result.title);
+      setThemeMotivatingText(result.motivatingText);
+    } catch (err: any) {
+      alert("Erro ao gerar tema com I.A.: " + err.message);
+    } finally {
+      setIsGeneratingTheme(false);
+    }
+  };
+
+  // Trigger AI Copilot Correction
+  const handleAICopilotCorrect = async () => {
+    if (!selectedEssay) return;
+    setIsAiRunningCopilot(true);
+    try {
+      const data = await callAICorrectEssay({
+        theme: selectedEssay.theme,
+        essayText: selectedEssay.essayText,
+        studentName: selectedEssay.studentName
+      });
+
+      // Update state fields so admin can tweak!
+      setEditThemeScore(data.themeAndStructureScore);
+      setEditCohesionScore(data.cohesionCoherenceScore);
+      setEditArgumentScore(data.informativeArgumentativeScore);
+      setEditGrammarScore(data.grammarFormalNormScore);
+      
+      setEditThemeFeedback(data.themeFeedback);
+      setEditCohesionFeedback(data.cohesionFeedback);
+      setEditArgumentFeedback(data.argumentationFeedback);
+      setEditGrammarFeedback(data.grammarFeedback);
+      
+      setEditOverallFeedback(`## Avaliação Corrigida via Copiloto I.A.\n\nSua nota sugerida foi **${data.overallScore}/100**.\n\n### Detalhamento:\n- **Tema:** ${data.themeAndStructureScore}/20\n- **Coesão:** ${data.cohesionCoherenceScore}/25\n- **Argumentação:** ${data.informativeArgumentativeScore}/25\n- **Gramática:** ${data.grammarFormalNormScore}/30`);
+      setEditRewrittenText(data.rewrittenText);
+
+      alert("Correção sugerida pela I.A. com sucesso! As notas e os feedbacks foram preenchidos de forma inteligente nos campos abaixo para sua revisão.");
+    } catch (err: any) {
+      alert("Erro ao executar corretor copiloto: " + err.message);
+    } finally {
+      setIsAiRunningCopilot(false);
+    }
+  };
+
+  // Sync grading form when selected essay changes
+  useEffect(() => {
+    if (selectedEssay) {
+      setEditThemeScore(selectedEssay.correctionDetails?.themeAndStructureScore ?? 0);
+      setEditCohesionScore(selectedEssay.correctionDetails?.cohesionCoherenceScore ?? 0);
+      setEditArgumentScore(selectedEssay.correctionDetails?.informativeArgumentativeScore ?? 0);
+      setEditGrammarScore(selectedEssay.correctionDetails?.grammarFormalNormScore ?? 0);
+      setEditThemeFeedback(selectedEssay.correctionDetails?.themeFeedback ?? "");
+      setEditCohesionFeedback(selectedEssay.correctionDetails?.cohesionFeedback ?? "");
+      setEditArgumentFeedback(selectedEssay.correctionDetails?.argumentationFeedback ?? "");
+      setEditGrammarFeedback(selectedEssay.correctionDetails?.grammarFeedback ?? "");
+      setEditOverallFeedback(selectedEssay.correctionFeedback ?? "");
+      setEditRewrittenText(selectedEssay.correctionDetails?.rewrittenText ?? "");
+    } else {
+      setEditThemeScore(0);
+      setEditCohesionScore(0);
+      setEditArgumentScore(0);
+      setEditGrammarScore(0);
+      setEditThemeFeedback("");
+      setEditCohesionFeedback("");
+      setEditArgumentFeedback("");
+      setEditGrammarFeedback("");
+      setEditOverallFeedback("");
+      setEditRewrittenText("");
+    }
+  }, [selectedEssay]);
+
+  const handleValToggleValidated = (sectionId: string, topicId: string) => {
+    const updated = valSyllabus.map(section => {
+      if (section.id === sectionId) {
+        const updatedTopics = section.topics.map(topic => {
+          if (topic.id === topicId) {
+            const currentFlag = (topic as any).isValidated;
+            return { ...topic, isValidated: !currentFlag };
+          }
+          return topic;
+        });
+        return { ...section, topics: updatedTopics };
+      }
+      return section;
+    });
+    setValSyllabus(updated);
+  };
+
+  const handleValEditTopicTitle = (sectionId: string, topicId: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    const updated = valSyllabus.map(section => {
+      if (section.id === sectionId) {
+        const updatedTopics = section.topics.map(topic => {
+          if (topic.id === topicId) {
+            return { ...topic, title: newTitle.trim() };
+          }
+          return topic;
+        });
+        return { ...section, topics: updatedTopics };
+      }
+      return section;
+    });
+    setValSyllabus(updated);
+  };
+
+  const handleValDeleteTopic = (sectionId: string, topicId: string) => {
+    const updated = valSyllabus.map(section => {
+      if (section.id === sectionId) {
+        const updatedTopics = section.topics.filter(topic => topic.id !== topicId);
+        return { ...section, topics: updatedTopics };
+      }
+      return section;
+    });
+    setValSyllabus(updated);
+  };
+
+  const handleValAddTopic = (sectionId: string) => {
+    const title = valNewTopicTitleMap[sectionId] || "";
+    if (!title.trim()) {
+      setValStatusMsg({ type: "error", text: "Por favor, digite o título do novo tópico." });
+      return;
+    }
+
+    const newTopic: SyllabusItem = {
+      id: "cfo_custom_" + Math.random().toString(36).substring(2, 11),
+      title: title.trim(),
+      isCompleted: false,
+      studyCount: 0,
+      hasSummary: false,
+      hasQuestions: false,
+      correctRate: 0,
+      spacedRepetitionActive: false
+    };
+
+    (newTopic as any).isValidated = true;
+
+    const updated = valSyllabus.map(section => {
+      if (section.id === sectionId) {
+        return { ...section, topics: [...section.topics, newTopic] };
+      }
+      return section;
+    });
+
+    setValSyllabus(updated);
+    setValNewTopicTitleMap(prev => ({ ...prev, [sectionId]: "" }));
+    setValStatusMsg({ type: "success", text: "Tópico adicionado localmente! Lembre-se de clicar em Salvar." });
+  };
+
+  const handleValValidateAll = () => {
+    const updated = valSyllabus.map(section => {
+      if (section.category === valCategory) {
+        const updatedTopics = section.topics.map(topic => ({
+          ...topic,
+          isValidated: true
+        }));
+        return { ...section, topics: updatedTopics };
+      }
+      return section;
+    });
+    setValSyllabus(updated);
+    setValStatusMsg({ type: "success", text: "Todos os tópicos marcados como Alinhados e Validados! Lembre-se de clicar em Salvar." });
+  };
+
+  const handleValSave = async () => {
+    setValSaving(true);
+    setValStatusMsg(null);
+    try {
+      if (valSelectedStudentId === "template") {
+        localStorage.setItem("syllabus_template_" + valCategory, JSON.stringify(valSyllabus));
+        setValStatusMsg({ type: "success", text: `Modelo padrão do edital ${valCategory.toUpperCase()} PMBA atualizado com sucesso no navegador!` });
+      } else {
+        await saveSyllabusProgressToFirestore(valSelectedStudentId, valSyllabus);
+        if (valSelectedStudentId === currentUser.id) {
+          localStorage.setItem(`syllabus_progress_${currentUser.id}`, JSON.stringify(valSyllabus));
+          window.dispatchEvent(new Event("syllabus_updated"));
+        }
+        setValStatusMsg({ type: "success", text: "Edital verticalizado do aluno atualizado e sincronizado no Firestore!" });
+      }
+    } catch (err) {
+      console.error("Error saving syllabus validation:", err);
+      setValStatusMsg({ type: "error", text: "Erro ao salvar as alterações do edital." });
+    } finally {
+      setValSaving(false);
+    }
+  };
+
+  // --- CFO Raio-X Editing & Management Handlers ---
+  const handleRaioXTopicChange = (subjectIndex: number, topicIndex: number, field: keyof RaioXTopic, value: any) => {
+    const updated = [...valRaioXCfo];
+    const subj = { ...updated[subjectIndex] };
+    const topics = [...subj.topics];
+    topics[topicIndex] = { ...topics[topicIndex], [field]: value };
+    subj.topics = topics;
+    updated[subjectIndex] = subj;
+    setValRaioXCfo(updated);
+  };
+
+  const handleRaioXTopicDelete = (subjectIndex: number, topicIndex: number) => {
+    const updated = [...valRaioXCfo];
+    const subj = { ...updated[subjectIndex] };
+    subj.topics = subj.topics.filter((_, idx) => idx !== topicIndex);
+    updated[subjectIndex] = subj;
+    setValRaioXCfo(updated);
+    setValStatusMsg({ type: "success", text: "Tópico do Raio-X removido localmente! Clique em Salvar Alterações." });
+  };
+
+  const handleRaioXTopicAdd = (subjectIndex: number) => {
+    const updated = [...valRaioXCfo];
+    const subj = { ...updated[subjectIndex] };
+    subj.topics = [
+      ...subj.topics,
+      {
+        topic: "Novo Assunto do Raio-X",
+        incidence: 1,
+        howItFalls: "Descrição pedagógica de como este assunto é cobrado na prova real."
+      }
+    ];
+    updated[subjectIndex] = subj;
+    setValRaioXCfo(updated);
+    setValStatusMsg({ type: "success", text: "Novo tópico adicionado à disciplina! Digite os dados e clique em Salvar Alterações." });
+  };
+
+  const handleRaioXSave = () => {
+    try {
+      localStorage.setItem("custom_raiox_cfo_data", JSON.stringify(valRaioXCfo));
+      window.dispatchEvent(new Event("custom_raiox_updated"));
+      setValStatusMsg({ type: "success", text: "Raio-X CFO PMBA atualizado e sincronizado com sucesso!" });
+    } catch (e) {
+      console.error(e);
+      setValStatusMsg({ type: "error", text: "Erro ao salvar as alterações do Raio-X." });
+    }
+  };
+
+  const handleRaioXReset = () => {
+    localStorage.removeItem("custom_raiox_cfo_data");
+    setValRaioXCfo(raioXCfoData);
+    window.dispatchEvent(new Event("custom_raiox_updated"));
+    setValStatusMsg({ type: "success", text: "Raio-X CFO PMBA restaurado com sucesso para os dados padrão oficiais!" });
+  };
+
+  const handleValResetToDefault = () => {
+    if (window.confirm(`Deseja realmente redefinir o edital para o padrão oficial do ${valCategory.toUpperCase()} PMBA (isso removerá tópicos customizados)?`)) {
+      const cleaned = initialSyllabusData.map(section => {
+        if (section.category === valCategory) {
+          const filteredTopics = section.topics.filter(topic => {
+            const titleLower = topic.title.toLowerCase();
+            return !(
+              titleLower.includes("lei de acesso") ||
+              titleLower.includes("acesso à informação") ||
+              titleLower.includes("12.527") ||
+              titleLower.includes("obsoleto")
+            );
+          });
+          return { ...section, topics: filteredTopics };
+        }
+        return section;
+      });
+      setValSyllabus(cleaned);
+      setValStatusMsg({ type: "success", text: `Edital redefinido para o padrão limpo do ${valCategory.toUpperCase()} PMBA!` });
+    }
+  };
+
+  // Approved students list for selectors
+  const approvedStudents = allUsers.filter((u) => u && u.isApproved && !u.isAdmin);
+
+  // Scan for obsolete topics in the loaded rascunho
+  const obsoleteTopicsList: { sectionId: string; subject: string; topic: SyllabusItem }[] = [];
+  valSyllabus.forEach(section => {
+    if (section.category === valCategory) {
+      section.topics.forEach(topic => {
+        const titleLower = topic.title.toLowerCase();
+        if (
+          titleLower.includes("lei de acesso") ||
+          titleLower.includes("acesso à informação") ||
+          titleLower.includes("12.527") ||
+          titleLower.includes("obsoleto")
+        ) {
+          obsoleteTopicsList.push({ sectionId: section.id, subject: section.subject, topic });
+        }
+      });
+    }
+  });
+
+  const handlePurgeAllObsolete = () => {
+    const updated = valSyllabus.map(section => {
+      if (section.category === valCategory) {
+        const filteredTopics = section.topics.filter(topic => {
+          const titleLower = topic.title.toLowerCase();
+          return !(
+            titleLower.includes("lei de acesso") ||
+            titleLower.includes("acesso à informação") ||
+            titleLower.includes("12.527") ||
+            titleLower.includes("obsoleto")
+          );
+        });
+        return { ...section, topics: filteredTopics };
+      }
+      return section;
+    });
+    setValSyllabus(updated);
+    setValStatusMsg({ type: "success", text: "Todos os tópicos obsoletos e LAI foram removidos do rascunho! Lembre-se de clicar em Salvar." });
+  };
+
+  useEffect(() => {
+    // Calculate student inactivity alerts (inactive for 7+ days)
+    const alerts: typeof inactivityAlerts = [];
+    const now = new Date();
+
+    approvedStudents.forEach((student) => {
+      let latestLogDate: Date | null = null;
+      const savedLogs = localStorage.getItem(`performance_logs_${student.id}`);
+      if (savedLogs) {
+        try {
+          const logs = JSON.parse(savedLogs);
+          if (Array.isArray(logs) && logs.length > 0) {
+            logs.forEach((log) => {
+              if (log.date) {
+                const d = new Date(log.date);
+                if (!isNaN(d.getTime())) {
+                  if (!latestLogDate || d > latestLogDate) {
+                    latestLogDate = d;
+                  }
+                }
+              }
+            });
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      let daysInactive = 999; // Never active
+      let lastActiveStr: string | null = null;
+
+      if (latestLogDate) {
+        const diffTime = Math.abs(now.getTime() - latestLogDate.getTime());
+        daysInactive = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        lastActiveStr = latestLogDate.toLocaleDateString("pt-BR");
+      }
+
+      if (daysInactive >= 7) {
+        alerts.push({
+          student,
+          daysInactive,
+          lastActiveDate: lastActiveStr
+        });
+      }
+    });
+
+    alerts.sort((a, b) => b.daysInactive - a.daysInactive);
+    setInactivityAlerts(alerts);
+  }, [allUsers]);
+
+  useEffect(() => {
+    if (approvedStudents.length > 0 && !selectedStudentId) {
+      setSelectedStudentId(approvedStudents[0].id);
+    }
+  }, [allUsers, approvedStudents, selectedStudentId]);
+
+  useEffect(() => {
+    const filtered = approvedStudents.filter(student => valCategory === "cfo" ? student.accessCFO : !student.accessCFO);
+    if (filtered.length > 0) {
+      if (!valSelectedStudentId || !filtered.some(s => s.id === valSelectedStudentId)) {
+        setValSelectedStudentId(filtered[0].id);
+      }
+    } else {
+      setValSelectedStudentId("");
+    }
+  }, [allUsers, approvedStudents, valCategory, valSelectedStudentId]);
+
+  // Load existing reports on mount and when student changes
+  useEffect(() => {
+    const loadReports = async () => {
+      const saved = localStorage.getItem("all_reports");
+      if (saved) {
+        try {
+          setExistingReports(JSON.parse(saved));
+        } catch (e) {
+          setExistingReports([]);
+        }
+      }
+
+      try {
+        const fsReports = await fetchAllReportsFromFirestore();
+        if (fsReports.length > 0) {
+          localStorage.setItem("all_reports", JSON.stringify(fsReports));
+          setExistingReports(fsReports);
+        }
+      } catch (err) {
+        console.error("Error loading reports from Firestore:", err);
+      }
+    };
+
+    loadReports();
+  }, [selectedStudentId]);
+
+  // Cycle day modification helper
+  const handleDayFieldChange = (dayNum: number, field: "questionTarget", val: number) => {
+    setCycleDays(
+      cycleDays.map((d) => (d.dayNumber === dayNum ? { ...d, [field]: Math.max(1, val) } : d))
+    );
+  };
+
+  const handleDaySubjectChange = (dayNum: number, subIdx: number, val: string) => {
+    setCycleDays(
+      cycleDays.map((d) => {
+        if (d.dayNumber === dayNum) {
+          const subs = [...d.subjects];
+          subs[subIdx] = val;
+          return { ...d, subjects: subs };
+        }
+        return d;
+      })
+    );
+  };
+
+  const handleAddSubjectToDay = (dayNum: number) => {
+    setCycleDays(
+      cycleDays.map((d) => {
+        if (d.dayNumber === dayNum) {
+          if (d.subjects.length >= 10) {
+            setNotification({ type: "error", message: "Limite máximo de 10 matérias por dia atingido." });
+            return d;
+          }
+          return { ...d, subjects: [...d.subjects, "Nova Matéria"] };
+        }
+        return d;
+      })
+    );
+  };
+
+  const handleRemoveSubjectFromDay = (dayNum: number, subIdx: number) => {
+    setCycleDays(
+      cycleDays.map((d) => {
+        if (d.dayNumber === dayNum) {
+          const subs = d.subjects.filter((_, idx) => idx !== subIdx);
+          return { ...d, subjects: subs };
+        }
+        return d;
+      })
+    );
+  };
+
+  const handleAddDayToCycle = () => {
+    const nextDayNum = cycleDays.length + 1;
+    const actualNextDayNum = (targetWeek - 1) * 7 + nextDayNum;
+    setCycleDays([
+      ...cycleDays,
+      { dayNumber: nextDayNum, questionTarget: 15, subjects: [`Nova Matéria Dia ${actualNextDayNum < 10 ? '0' + actualNextDayNum : actualNextDayNum}`], notes: "" }
+    ]);
+  };
+
+  const handleAddMultipleDaysToCycle = (count: number) => {
+    const newDays = [...cycleDays];
+    for (let i = 0; i < count; i++) {
+      const nextDayNum = newDays.length + 1;
+      const actualNextDayNum = (targetWeek - 1) * 7 + nextDayNum;
+      newDays.push({
+        dayNumber: nextDayNum,
+        questionTarget: 15,
+        subjects: [`Matéria de Alocação Dia ${actualNextDayNum < 10 ? '0' + actualNextDayNum : actualNextDayNum}`],
+        notes: ""
+      });
+    }
+    setCycleDays(newDays);
+  };
+
+  const handleRemoveLastDayFromCycle = () => {
+    if (cycleDays.length <= 1) {
+      setNotification({ type: "error", message: "O ciclo deve conter no mínimo 1 dia." });
+      return;
+    }
+    setCycleDays(cycleDays.slice(0, -1));
+  };
+
+  const handleResetCycleToDefault = () => {
+    setCycleDays([
+      { dayNumber: 1, questionTarget: 15, subjects: ["Língua Portuguesa: Crase", "Direito Constitucional: Artigo 5º"], notes: "" },
+      { dayNumber: 2, questionTarget: 15, subjects: ["Língua Inglesa: Plurais", "Direito Penal: Consumação e Tentativa"], notes: "" },
+      { dayNumber: 3, questionTarget: 20, subjects: ["Matemática: Progressão Aritmética", "Informática: Word e Writer"], notes: "" },
+      { dayNumber: 4, questionTarget: 15, subjects: ["Direitos Humanos: Declaração 1948", "História da Bahia: Canudos"], notes: "" },
+      { dayNumber: 5, questionTarget: 20, subjects: ["Direito Administrativo: Princípios", "Geografia da Bahia: Climatologia"], notes: "" },
+      { dayNumber: 6, questionTarget: 15, subjects: ["Direito Penal Militar: Motim", "Matemática: Matrizes"], notes: "" },
+      { dayNumber: 7, questionTarget: 30, subjects: ["Simulado Geral de Revisão"], notes: "" }
+    ]);
+  };
+
+  const handleSetWeeks = (weeks: number) => {
+    const targetLength = weeks * 7;
+    let newDays = [...cycleDays];
+    if (newDays.length < targetLength) {
+      // Grow
+      for (let d = newDays.length + 1; d <= targetLength; d++) {
+        const weekdayTemplateIdx = (d - 1) % 7;
+        const defaultTemplates = [
+          { questionTarget: 15, subjects: ["Língua Portuguesa: Crase", "Direito Constitucional: Artigo 5º"] },
+          { questionTarget: 15, subjects: ["Língua Inglesa: Plurais", "Direito Penal: Consumação e Tentativa"] },
+          { questionTarget: 20, subjects: ["Matemática: Progressão Aritmética", "Informática: Word e Writer"] },
+          { questionTarget: 15, subjects: ["Direitos Humanos: Declaração 1948", "História da Bahia: Canudos"] },
+          { questionTarget: 20, subjects: ["Direito Administrativo: Princípios", "Geografia da Bahia: Climatologia"] },
+          { questionTarget: 15, subjects: ["Direito Penal Militar: Motim", "Matemática: Matrizes"] },
+          { questionTarget: 30, subjects: ["Simulado Geral de Revisão"] }
+        ];
+        const template = defaultTemplates[weekdayTemplateIdx];
+        newDays.push({
+          dayNumber: d,
+          questionTarget: template.questionTarget,
+          subjects: template.subjects.map(s => `${s} - Sem ${Math.floor((d - 1) / 7) + 1}`),
+          notes: ""
+        });
+      }
+    } else if (newDays.length > targetLength) {
+      // Shrink
+      newDays = newDays.slice(0, targetLength);
+    }
+    setCycleDays(newDays);
+    setAdminSelectedWeek(1);
+  };
+
+  // Load selected student's active study cycle into the editor
+  useEffect(() => {
+    setShowDeleteConfirm(false);
+    if (!selectedStudentId) return;
+
+    const loadStudentCycle = async () => {
+      setAdminSelectedWeek(1);
+      // Fetch from Firestore FIRST to get the most accurate, shared state
+      try {
+        const fsCycle = await fetchStudyCycleFromFirestore(selectedStudentId);
+        if (fsCycle && Array.isArray(fsCycle.days)) {
+          setTargetWeek(fsCycle.weekNumber || 1);
+          setCycleDays(fsCycle.days.map(d => ({
+            dayNumber: d.dayNumber,
+            questionTarget: d.questionTarget,
+            subjects: d.subjects.map(s => s.name),
+            notes: d.notes || ""
+          })));
+          setCycleDetails(fsCycle.cycleDetails || "");
+          localStorage.setItem(`study_cycle_${selectedStudentId}`, JSON.stringify(fsCycle));
+          return;
+        }
+      } catch (err) {
+        console.error("Error loading student cycle from Firestore in AdminPanel:", err);
+      }
+
+      // Fallback check in local storage
+      const saved = localStorage.getItem(`study_cycle_${selectedStudentId}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as StudyCycle;
+          if (parsed && Array.isArray(parsed.days)) {
+            setTargetWeek(parsed.weekNumber || 1);
+            setCycleDays(parsed.days.map(d => ({
+              dayNumber: d.dayNumber,
+              questionTarget: d.questionTarget,
+              subjects: d.subjects.map(s => s.name),
+              notes: d.notes || ""
+            })));
+            setCycleDetails(parsed.cycleDetails || "");
+            return;
+          }
+        } catch (e) {
+          // ignore, fall back
+        }
+      }
+
+      // No cycle exists, reset editor to default template so admin starts with a clean template
+      handleResetCycleToDefault();
+      setTargetWeek(1);
+      setCycleDetails("");
+    };
+
+    loadStudentCycle();
+  }, [selectedStudentId]);
+
+  // Save student cycle
+  const handleSaveStudentCycle = async () => {
+    if (!selectedStudentId) {
+      setNotification({ type: "error", message: "Por favor, selecione um aluno para receber o ciclo." });
+      return;
+    }
+
+    const student = allUsers.find((u) => u.id === selectedStudentId);
+    if (!student) return;
+
+    const newCycle: StudyCycle = {
+      id: "cycle_" + Date.now(),
+      studentId: selectedStudentId,
+      studentName: student.name,
+      weekNumber: targetWeek,
+      isCompleted: false,
+      unlockedAt: new Date().toISOString(),
+      cycleDetails: cycleDetails,
+      days: cycleDays.map((d) => ({
+        dayNumber: d.dayNumber,
+        questionTarget: d.questionTarget,
+        questionSolved: 0,
+        completed: false,
+        notes: d.notes || "",
+        subjects: d.subjects
+          .filter((sub) => sub.trim() !== "")
+          .map((sub, sIdx) => ({
+            id: `sub_${d.dayNumber}_${sIdx}_${Date.now()}`,
+            name: sub,
+            completed: false
+          }))
+      }))
+    };
+
+    localStorage.setItem(`study_cycle_${selectedStudentId}`, JSON.stringify(newCycle));
+    
+    try {
+      await saveStudyCycleToFirestore(selectedStudentId, newCycle);
+    } catch (e) {
+      console.error("Error saving cycle to Firestore:", e);
+    }
+    
+    // Dispatch a storage event so that other components (like WeeklyCycle) update immediately
+    window.dispatchEvent(new Event("storage"));
+    
+    setNotification({
+      type: "success",
+      message: `Sucesso! Ciclo de estudos da Semana ${targetWeek} publicado para o aluno: ${student.name}`
+    });
+  };
+
+  const handleDeleteStudentCycle = async () => {
+    if (!selectedStudentId) {
+      setNotification({ type: "error", message: "Por favor, selecione um aluno para excluir o ciclo." });
+      return;
+    }
+
+    const student = allUsers.find((u) => u.id === selectedStudentId);
+    if (!student) return;
+
+    localStorage.removeItem(`study_cycle_${selectedStudentId}`);
+    
+    try {
+      await deleteStudyCycleFromFirestore(selectedStudentId);
+    } catch (e) {
+      console.error("Error deleting cycle from Firestore:", e);
+    }
+
+    // Reset cycle editor state to default template
+    handleResetCycleToDefault();
+    setTargetWeek(1);
+
+    window.dispatchEvent(new Event("storage"));
+
+    setNotification({
+      type: "success",
+      message: `Sucesso! Todos os ciclos de estudos de ${student.name} foram excluídos definitivamente.`
+    });
+
+    setShowDeleteConfirm(false);
+  };
+
+  // AI Weekly Report Helper
+  const [aiGeneratingReport, setAiGeneratingReport] = useState<boolean>(false);
+
+  const handleAiGenerateReport = async () => {
+    if (!selectedStudentId) {
+      setNotification({ type: "error", message: "Selecione um aluno primeiro para gerar o parecer com I.A." });
+      return;
+    }
+
+    const student = allUsers.find((u) => u.id === selectedStudentId);
+    if (!student) return;
+
+    setAiGeneratingReport(true);
+    setNotification({ type: "info", message: "Analisando histórico de acertos do recruta para gerar parecer..." });
+
+    try {
+      const savedLogs = localStorage.getItem(`performance_logs_${selectedStudentId}`);
+      let logsSummary = "";
+      if (savedLogs) {
+        try {
+          const logs: PerformanceLog[] = JSON.parse(savedLogs);
+          if (Array.isArray(logs) && logs.length > 0) {
+            const stats: { [sub: string]: { attempted: number; correct: number; errors: string[] } } = {};
+            logs.forEach(log => {
+              if (!stats[log.subject]) {
+                stats[log.subject] = { attempted: 0, correct: 0, errors: [] };
+              }
+              stats[log.subject].attempted += log.questionsAttempted || 0;
+              stats[log.subject].correct += log.questionsCorrect || 0;
+              if (log.reasonForError && log.reasonForError.trim()) {
+                stats[log.subject].errors.push(`${log.topic}: ${log.reasonForError}`);
+              }
+            });
+
+            logsSummary += `RESUMO DE DESEMPENHO DE ${student.name}:\n`;
+            Object.keys(stats).forEach(sub => {
+              const item = stats[sub];
+              const rate = item.attempted > 0 ? Math.round((item.correct / item.attempted) * 100) : 0;
+              logsSummary += `- Disciplina: ${sub}\n  Aproveitamento: ${rate}% (${item.correct}/${item.attempted} acertos)\n`;
+              if (item.errors.length > 0) {
+                logsSummary += `  Pontos de Erro Reportados:\n   * ` + item.errors.slice(0, 5).join("\n   * ") + "\n";
+              }
+            });
+          } else {
+            logsSummary = "O aluno não possui nenhum registro de simulados ou questões respondidas cadastrado no sistema ainda.";
+          }
+        } catch (e) {
+          logsSummary = "Erro ao ler histórico de questões.";
+        }
+      } else {
+        logsSummary = "Nenhum histórico de questões respondidas encontrado para este aluno.";
+      }
+
+      const data = await callAIAction({
+        action: "generate_report",
+        studentName: student.name,
+        week: reportWeek,
+        performanceData: logsSummary
+      });
+
+      if (data.text) {
+        setReportContent(stripMarkdownAsterisks(data.text));
+        setNotification({ type: "success", message: "Relatório pedagógico gerado com sucesso pela Inteligência Artificial!" });
+      } else {
+        throw new Error("Resposta da IA veio vazia.");
+      }
+    } catch (err: any) {
+      console.error("Erro ao gerar relatório com IA:", err);
+      setNotification({ type: "error", message: `Falha ao gerar relatório: ${err.message}` });
+    } finally {
+      setAiGeneratingReport(false);
+    }
+  };
+
+  // Send Report / Correio
+  const handleSendReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudentId) {
+      setNotification({ type: "error", message: "Selecione um aluno." });
+      return;
+    }
+    if (!reportContent.trim()) {
+      setNotification({ type: "error", message: "Escreva o conteúdo do relatório." });
+      return;
+    }
+
+    const savedReportsStr = localStorage.getItem("all_reports") || "[]";
+    let savedReports: WeeklyReport[] = [];
+    try {
+      savedReports = JSON.parse(savedReportsStr);
+    } catch (e) {
+      savedReports = [];
+    }
+
+    // Check if report already exists for this week & student (if so, we overwrite/edit)
+    const existingIndex = savedReports.findIndex(
+      (r) => r.studentId === selectedStudentId && r.weekNumber === reportWeek
+    );
+
+    const now = new Date().toISOString();
+    let targetReport: WeeklyReport;
+    
+    if (existingIndex > -1) {
+      savedReports[existingIndex].content = reportContent;
+      savedReports[existingIndex].updatedAt = now;
+      targetReport = savedReports[existingIndex];
+      setNotification({ type: "success", message: "Relatório semanal editado e atualizado com sucesso!" });
+    } else {
+      const newReport: WeeklyReport = {
+        id: "rep_" + Date.now(),
+        studentId: selectedStudentId,
+        weekNumber: reportWeek,
+        content: reportContent,
+        createdAt: now,
+        updatedAt: now
+      };
+      savedReports.unshift(newReport);
+      targetReport = newReport;
+      setNotification({ type: "success", message: "Relatório semanal enviado para a caixa de correio do aluno!" });
+    }
+
+    localStorage.setItem("all_reports", JSON.stringify(savedReports));
+    setExistingReports(savedReports);
+    setReportContent("");
+
+    try {
+      await saveReportToFirestore(targetReport);
+    } catch (e) {
+      console.error("Error saving report to Firestore:", e);
+    }
+  };
+
+  const handleDeleteReport = (id: string) => {
+    setReportToDeleteId(id);
+  };
+
+  const handleConfirmDeleteReport = async (id: string) => {
+    const updated = existingReports.filter((r) => r.id !== id);
+    localStorage.setItem("all_reports", JSON.stringify(updated));
+    setExistingReports(updated);
+    setReportToDeleteId(null);
+    setNotification({ type: "success", message: "Relatório removido com sucesso!" });
+
+    try {
+      await deleteReportFromFirestore(id);
+    } catch (e) {
+      console.error("Error deleting report from Firestore:", e);
+    }
+  };
+
+  // Expired / reached plans logic
+  const todayDateStr = new Date().toISOString().split("T")[0];
+  const expiredPlanAlerts = allUsers.filter(u => {
+    if (!u || u.isAdmin || !u.plan || u.plan === "indefinido" || !u.planEndDate) return false;
+    const endDateStr = u.planEndDate.split("T")[0];
+    return todayDateStr >= endDateStr;
+  });
+
+  return (
+    <div id="admin-panel-component" className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white shadow-xl">
+      
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-6 border-b border-slate-800 pb-4">
+        <div className="p-2.5 bg-amber-400 rounded-xl text-slate-950 shadow-md">
+          <Shield className="w-5 h-5 text-slate-950" />
+        </div>
+        <div>
+          <h2 className="text-lg font-extrabold text-amber-400 uppercase tracking-wider">Painel Administrativo Coordenador</h2>
+          <p className="text-slate-400 text-xs">Gestão de acessos, ciclos personalizados, relatórios semanais e homologação.</p>
+        </div>
+      </div>
+
+      {/* Firebase Auth Warning Banner */}
+      {showFirebaseAuthWarning && (
+        <div className="p-4 mb-6 rounded-xl border bg-amber-500/10 border-amber-500/30 text-amber-300 text-xs leading-relaxed space-y-1 relative animate-fade-in">
+          <button 
+            type="button"
+            onClick={() => {
+              setShowFirebaseAuthWarning(false);
+              localStorage.removeItem("firebase_auth_method_disabled");
+            }}
+            className="absolute top-2.5 right-2.5 text-amber-400 hover:text-white font-bold cursor-pointer transition"
+            title="Dispensar aviso"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-1.5 font-bold uppercase text-[10px] text-amber-400">
+            <AlertCircle className="w-4 h-4" />
+            <span>Alerta de Autenticação do Firebase (Instrução para o Administrador)</span>
+          </div>
+          <p>
+            O provedor de <strong>E-mail/Senha</strong> está desativado no Console do Firebase de seu projeto.
+          </p>
+          <p className="text-slate-400">
+            Para que o Firebase Auth funcione plenamente de forma síncrona na nuvem, acesse o{" "}
+            <a 
+              href="https://console.firebase.google.com/" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-amber-400 underline font-bold hover:text-amber-300"
+            >
+              Console do Firebase
+            </a>, vá em <strong>Authentication &gt; Sign-in method &gt; Adicionar provedor</strong> e ative o provedor de <strong>E-mail/Senha</strong>.
+          </p>
+          <p className="text-slate-400 font-medium text-[11px]">
+            *Seus alunos continuarão conseguindo logar normalmente através da base de dados local reserva enquanto isso.
+          </p>
+        </div>
+      )}
+
+      {/* Notification banner */}
+      {notification && (
+        <div className={`p-4 mb-6 rounded-xl border flex items-center justify-between text-xs font-bold animate-fade-in ${
+          notification.type === "success" 
+            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
+            : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+        }`}>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            <span>{notification.message}</span>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setNotification(null)}
+            className="text-slate-400 hover:text-white cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Selector Subtabs */}
+      <div className="flex flex-wrap gap-2 mb-6 bg-slate-950 p-1 rounded-xl border border-slate-800">
+        <button
+          onClick={() => setActiveSubTab("users")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "users" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          Membros e Aprovações
+        </button>
+        <button
+          onClick={() => setActiveSubTab("cycle")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "cycle" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          Gerar Ciclo de Estudos
+        </button>
+        <button
+          onClick={() => setActiveSubTab("stats")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "stats" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <BarChart2 className="w-4 h-4" />
+          Estatísticas dos Alunos
+        </button>
+        <button
+          onClick={() => setActiveSubTab("correio")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "correio" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <Mail className="w-4 h-4" />
+          Correio / Relatórios
+        </button>
+        <button
+          onClick={() => setActiveSubTab("content")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "content" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          Gerenciar Biblioteca
+        </button>
+        <button
+          onClick={() => setActiveSubTab("syllabus_validation")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "syllabus_validation" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <Shield className="w-4 h-4" />
+          Validador de Edital CFO
+        </button>
+        <button
+          onClick={() => setActiveSubTab("redacoes")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "redacoes" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          Correções de Redações
+        </button>
+        <button
+          onClick={() => setActiveSubTab("themes")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "themes" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          Temas de Redação
+        </button>
+        <button
+          onClick={() => setActiveSubTab("backup")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition cursor-pointer ${
+            activeSubTab === "backup" ? "bg-amber-400 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          Backup & Restauro
+        </button>
+      </div>
+
+      {/* --- SUBTAB 1: MEMBERS APPROVAL --- */}
+      {activeSubTab === "users" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-sm text-slate-200 uppercase tracking-wider">Aprovação de Alunos PMBA</h3>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCreateForm(!showCreateForm)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-bold rounded-lg cursor-pointer transition shadow-sm"
+              >
+                {showCreateForm ? <Minus className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+                {showCreateForm ? "Fechar Cadastro" : "Criar Novo Usuário"}
+              </button>
+              <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1.5 rounded-lg font-mono">
+                Total Cadastros: {allUsers.length}
+              </span>
+            </div>
+          </div>
+
+          {/* Alertas de Vencimento de Plano */}
+          {expiredPlanAlerts.length > 0 && (
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-rose-500/20 text-rose-400 rounded-lg animate-pulse">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                      Vencimentos de Plano de Estudos ({expiredPlanAlerts.length})
+                    </h4>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      Os seguintes alunos atingiram ou ultrapassaram a data de término de seus planos de estudo.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPlanAlertsDetails(!showPlanAlertsDetails)}
+                  className="px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-[10px] text-rose-400 font-bold rounded border border-rose-500/20 cursor-pointer transition select-none"
+                >
+                  {showPlanAlertsDetails ? "Ocultar Detalhes" : "Visualizar Alunos"}
+                </button>
+              </div>
+
+              {showPlanAlertsDetails && (
+                <div className="pt-2 border-t border-rose-500/10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 animate-fade-in">
+                  {expiredPlanAlerts.map((student) => {
+                    const daysOverdue = Math.floor(
+                      (new Date().getTime() - new Date(student.planEndDate!).getTime()) / (1000 * 60 * 60 * 24)
+                    );
+                    return (
+                      <div key={student.id} className="bg-slate-950 p-3 rounded-lg border border-rose-500/10 flex flex-col justify-between space-y-2">
+                        <div>
+                          <span className="font-extrabold text-slate-200 text-xs block truncate">{student.name}</span>
+                          <span className="text-[9px] text-slate-400 block truncate font-mono">{student.email}</span>
+                          <span className="text-[8px] text-slate-500 block mt-0.5">Plano: {student.plan === "mensal" ? "Mensal" : "Trimestral"}</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-1.5 border-t border-slate-900">
+                          <span className="text-[10px] font-bold text-rose-400">
+                            {daysOverdue <= 0 ? "Vence hoje!" : `Vencido há ${daysOverdue} dias`}
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-mono">
+                            {student.planEndDate ? new Date(student.planEndDate).toLocaleDateString("pt-BR") : ""}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Alertas de Redefinição de Senha */}
+          {resetRequests.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-lg animate-pulse">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    Solicitações de Redefinição de Senha ({resetRequests.length})
+                  </h4>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    Os seguintes alunos esqueceram a senha e solicitaram que você realize a alteração de suas credenciais de acesso.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-amber-500/15 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {resetRequests.map((req) => {
+                  const targetUser = allUsers.find(
+                    (u) => u && u.email && u.email.toLowerCase().trim() === req.email.toLowerCase().trim()
+                  );
+                  const currentEditPass = editedPasswords[req.id] !== undefined 
+                    ? editedPasswords[req.id] 
+                    : (targetUser ? targetUser.password || "" : "");
+
+                  return (
+                    <div key={req.id} className="bg-slate-950 p-3 rounded-lg border border-amber-500/10 flex flex-col justify-between space-y-2">
+                      <div>
+                        <span className="font-extrabold text-slate-200 text-xs block truncate">{req.name}</span>
+                        <span className="text-[9px] text-slate-400 block truncate font-mono">{req.email}</span>
+                        <span className="text-[8px] text-slate-500 block font-mono mt-0.5">Solicitado em: {new Date(req.createdAt).toLocaleString("pt-BR")}</span>
+                      </div>
+
+                      {targetUser ? (
+                        <div className="pt-1.5 border-t border-slate-900 space-y-2">
+                          <div>
+                            <label className="block text-[8px] uppercase font-bold text-slate-400 mb-0.5">Nova Senha</label>
+                            <input
+                              type="text"
+                              value={currentEditPass}
+                              onChange={(e) => setEditedPasswords(prev => ({ ...prev, [req.id]: e.target.value }))}
+                              placeholder="Digite a nova senha"
+                              className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded px-2 py-1 text-xs text-amber-400 font-mono focus:outline-none transition"
+                            />
+                          </div>
+                          
+                          <button
+                            type="button"
+                            disabled={updatingPasswordUserId === targetUser.id}
+                            onClick={async () => {
+                              await handleSavePassword(targetUser, currentEditPass);
+                              try {
+                                await deletePasswordResetRequestFromFirestore(req.id);
+                                await loadPasswordResetRequests();
+                              } catch (err) {
+                                console.error(err);
+                              }
+                            }}
+                            className="w-full py-1.5 bg-amber-400 hover:bg-amber-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 text-[10px] font-black rounded uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            {updatingPasswordUserId === targetUser.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            Redefinir & Resolver
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="pt-1.5 border-t border-slate-900 flex flex-col gap-1.5">
+                          <p className="text-[9px] text-rose-400 italic">Usuário não encontrado na base de dados.</p>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await deletePasswordResetRequestFromFirestore(req.id);
+                                await loadPasswordResetRequests();
+                              } catch (err) {
+                                console.error(err);
+                              }
+                            }}
+                            className="w-full py-1 bg-slate-900 hover:bg-slate-850 text-[10px] text-slate-400 font-bold rounded cursor-pointer text-center"
+                          >
+                            Descartar Solicitação
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Alertas Automáticos de Alunos Inativos */}
+          {inactivityAlerts.length > 0 && (
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-rose-500/20 text-rose-400 rounded-lg animate-pulse">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                      Alunos Inativos Detectados ({inactivityAlerts.length})
+                    </h4>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      Estes alunos homologados não registram atividades de estudo ou simulados há 7 dias ou mais.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInactivityDetails(!showInactivityDetails)}
+                  className="px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-[10px] text-rose-400 font-bold rounded border border-rose-500/20 cursor-pointer transition"
+                >
+                  {showInactivityDetails ? "Ocultar Detalhes" : "Visualizar Lista"}
+                </button>
+              </div>
+
+              {showInactivityDetails && (
+                <div className="pt-2 border-t border-rose-500/10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 animate-fade-in">
+                  {inactivityAlerts.map(({ student, daysInactive, lastActiveDate }) => (
+                    <div key={student.id} className="bg-slate-950 p-3 rounded-lg border border-rose-500/10 flex flex-col justify-between space-y-2">
+                      <div>
+                        <span className="font-extrabold text-slate-200 text-xs block truncate">{student.name}</span>
+                        <span className="text-[9px] text-slate-500 block truncate">{student.email}</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-900">
+                        <span className="text-[10px] font-bold text-rose-400">
+                          {daysInactive === 999 ? "Sem atividades" : `${daysInactive} dias inativo`}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-mono">
+                          {lastActiveDate ? `Último: ${lastActiveDate}` : "Nunca ativou"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStudentId(student.id);
+                          setActiveSubTab("correio");
+                          // pre-populate report area with a nudge
+                          setReportWeek(1);
+                          setReportContent(`Atenção Aluno ${student.name},\n\nIdentificamos em nosso painel de coordenação que você está sem registrar atividades em seu ciclo de estudos há mais de 7 dias.\n\nA constância é o pilar mais importante da sua aprovação no concurso PMBA. Como podemos te ajudar a retomar o ritmo hoje?\n\nForte abraço,\nSua Coordenação.`);
+                        }}
+                        className="w-full mt-1.5 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 text-[10px] font-extrabold rounded text-center transition cursor-pointer"
+                      >
+                        Enviar Notificação / Cobrança
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showCreateForm && (
+            <form onSubmit={handleCreateUserSubmit} className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <UserPlus className="w-4 h-4" />
+                Cadastrar Novo Usuário e Definir Senha
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Nome Completo</label>
+                  <input
+                    type="text"
+                    required
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                    placeholder="Ex: Gabriel Jesus"
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Endereço de E-mail</label>
+                  <input
+                    type="email"
+                    required
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    placeholder="Ex: gabriel@pmba.com"
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Senha de Acesso</label>
+                  <input
+                    type="text"
+                    required
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    placeholder="Defina a senha do aluno"
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none transition"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Plano de Estudos</label>
+                  <select
+                    value={newUserPlan}
+                    onChange={(e) => handleNewUserPlanChange(e.target.value as any)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs text-slate-200 cursor-pointer focus:outline-none transition"
+                  >
+                    <option value="mensal">Mensal</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="indefinido">Indefinido</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Data de Entrada do Aluno</label>
+                  <input
+                    type="date"
+                    required
+                    value={newUserCreatedAt}
+                    onChange={(e) => handleNewUserCreatedAtChange(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none transition"
+                  />
+                </div>
+              </div>
+
+              {newUserPlan !== "indefinido" && (
+                <div className="bg-amber-400/5 border border-amber-400/10 rounded-xl p-4 space-y-2 animate-fade-in">
+                  <label className="block text-[10px] uppercase font-bold text-amber-400/80 mb-1">Data de Término do Plano</label>
+                  <input
+                    type="date"
+                    required
+                    value={newUserPlanEndDate}
+                    onChange={(e) => setNewUserPlanEndDate(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs text-amber-400 font-mono focus:outline-none transition"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    O plano {newUserPlan} expira automaticamente nesta data. O administrador receberá um alerta quando a data for atingida.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-900">
+                <div className="flex flex-wrap items-center gap-6">
+                  {/* Soldado Access Checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newUserAccessSoldado}
+                      onChange={(e) => setNewUserAccessSoldado(e.target.checked)}
+                      className="rounded border-slate-850 text-amber-500 focus:ring-0 focus:ring-offset-0 bg-slate-900 cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-300">Acesso Soldado</span>
+                  </label>
+
+                  {/* CFO Access Checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newUserAccessCFO}
+                      onChange={(e) => setNewUserAccessCFO(e.target.checked)}
+                      className="rounded border-slate-850 text-amber-500 focus:ring-0 focus:ring-offset-0 bg-slate-900 cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-300">Acesso CFO</span>
+                  </label>
+
+                  {/* Admin Access Checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newUserIsAdmin}
+                      onChange={(e) => setNewUserIsAdmin(e.target.checked)}
+                      className="rounded border-slate-850 text-amber-500 focus:ring-0 focus:ring-offset-0 bg-slate-900 cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-300 font-bold text-amber-400">Coordenador/Admin</span>
+                  </label>
+
+                  {/* Approved Checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newUserIsApproved}
+                      onChange={(e) => setNewUserIsApproved(e.target.checked)}
+                      className="rounded border-slate-850 text-amber-500 focus:ring-0 focus:ring-offset-0 bg-slate-900 cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-300 font-bold text-emerald-400">Homologar Automaticamente</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-400 text-xs rounded-lg font-semibold transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-extrabold rounded-lg transition cursor-pointer shadow-md"
+                  >
+                    Salvar Usuário
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950/20">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-semibold uppercase tracking-wider">
+                  <th className="p-3">Nome / E-mail</th>
+                  <th className="p-3 text-center">Data de Entrada</th>
+                  <th className="p-3 text-center">Plano</th>
+                  <th className="p-3 text-center">Vencimento do Plano</th>
+                  <th className="p-3 text-center">Senha de Acesso</th>
+                  <th className="p-3 text-center">Acesso Soldado</th>
+                  <th className="p-3 text-center">Acesso CFO</th>
+                  <th className="p-3 text-center">Acesso Admin</th>
+                  <th className="p-3 text-center">Status</th>
+                  <th className="p-3 text-center">Ações de Gestão</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/50">
+                {allUsers.filter(Boolean).map((user) => (
+                  <tr key={user.id} className="hover:bg-slate-950/40 transition">
+                    <td className="p-3">
+                      <span className="font-bold text-slate-200 block">{user.name}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{user.email}</span>
+                    </td>
+
+                    {/* Data de Entrada */}
+                    <td className="p-3 text-center">
+                      <input
+                        type="date"
+                        value={user.createdAt ? user.createdAt.split("T")[0] : ""}
+                        onChange={(e) => onUpdateUser({ ...user, createdAt: e.target.value ? new Date(e.target.value + "T12:00:00").toISOString() : new Date().toISOString() })}
+                        className="bg-slate-900 border border-slate-800 focus:border-amber-400 text-slate-300 text-[11px] rounded px-1.5 py-0.5 focus:outline-none transition font-mono"
+                      />
+                    </td>
+
+                    {/* Plano Selector */}
+                    <td className="p-3 text-center">
+                      <select
+                        value={user.plan || "indefinido"}
+                        onChange={(e) => {
+                          const newPlan = e.target.value as "mensal" | "trimestral" | "indefinido";
+                          let calculatedEndDate = "";
+                          if (newPlan !== "indefinido") {
+                            const baseDateStr = user.createdAt ? user.createdAt.split("T")[0] : new Date().toISOString().split("T")[0];
+                            calculatedEndDate = calculateDefaultEndDate(newPlan, baseDateStr);
+                          }
+                          onUpdateUser({ 
+                            ...user, 
+                            plan: newPlan, 
+                            planEndDate: calculatedEndDate ? new Date(calculatedEndDate + "T12:00:00").toISOString() : "" 
+                          });
+                        }}
+                        className="bg-slate-900 border border-slate-800 focus:border-amber-400 text-slate-300 text-[11px] rounded px-1.5 py-0.5 focus:outline-none cursor-pointer transition"
+                      >
+                        <option value="mensal">Mensal</option>
+                        <option value="trimestral">Trimestral</option>
+                        <option value="indefinido">Indefinido</option>
+                      </select>
+                    </td>
+
+                    {/* Vencimento do Plano */}
+                    <td className="p-3 text-center">
+                      {user.plan && user.plan !== "indefinido" ? (
+                        <input
+                          type="date"
+                          value={user.planEndDate ? user.planEndDate.split("T")[0] : ""}
+                          onChange={(e) => onUpdateUser({ ...user, planEndDate: e.target.value ? new Date(e.target.value + "T12:00:00").toISOString() : "" })}
+                          className="bg-slate-900 border border-slate-800 focus:border-amber-400 text-slate-300 text-[11px] rounded px-1.5 py-0.5 focus:outline-none transition font-mono"
+                        />
+                      ) : (
+                        <span className="text-slate-500 italic text-[11px]">N/A</span>
+                      )}
+                    </td>
+
+                    {/* Password Management */}
+                    <td className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5 max-w-[150px] mx-auto">
+                        <input
+                          type="text"
+                          value={editedPasswords[user.id] !== undefined ? editedPasswords[user.id] : (user.password || "")}
+                          onChange={(e) => setEditedPasswords(prev => ({ ...prev, [user.id]: e.target.value }))}
+                          className="w-full bg-slate-900 border border-slate-800 hover:border-amber-400/50 focus:border-amber-400 rounded px-2 py-1 text-center font-mono text-[11px] text-amber-400 placeholder-slate-700 focus:outline-none transition"
+                          placeholder="Sem senha"
+                        />
+                        {editedPasswords[user.id] !== undefined && editedPasswords[user.id] !== user.password && (
+                          <button
+                            disabled={updatingPasswordUserId === user.id}
+                            onClick={() => handleSavePassword(user, editedPasswords[user.id])}
+                            className="p-1 rounded bg-amber-400 hover:bg-amber-500 text-slate-950 transition cursor-pointer shrink-0"
+                            title="Salvar nova senha"
+                          >
+                            {updatingPasswordUserId === user.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    
+                    {/* Toggle Access Soldado */}
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => onUpdateUser({ ...user, accessSoldado: !user.accessSoldado })}
+                        className={`px-2 py-1 rounded text-[10px] font-bold border transition cursor-pointer ${
+                          user.accessSoldado 
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                            : "bg-slate-950 border-slate-800 text-slate-500"
+                        }`}
+                      >
+                        {user.accessSoldado ? "SIM" : "NÃO"}
+                      </button>
+                    </td>
+
+                    {/* Toggle Access CFO */}
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => onUpdateUser({ ...user, accessCFO: !user.accessCFO })}
+                        className={`px-2 py-1 rounded text-[10px] font-bold border transition cursor-pointer ${
+                          user.accessCFO 
+                            ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400" 
+                            : "bg-slate-950 border-slate-800 text-slate-500"
+                        }`}
+                      >
+                        {user.accessCFO ? "SIM" : "NÃO"}
+                      </button>
+                    </td>
+
+                    {/* Toggle Admin */}
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => onUpdateUser({ ...user, isAdmin: !user.isAdmin })}
+                        className={`px-2 py-1 rounded text-[10px] font-bold border transition cursor-pointer ${
+                          user.isAdmin 
+                            ? "bg-amber-400/10 border-amber-400/20 text-amber-400" 
+                            : "bg-slate-950 border-slate-800 text-slate-500"
+                        }`}
+                      >
+                        {user.isAdmin ? "ADMIN" : "ALUNO"}
+                      </button>
+                    </td>
+
+                    {/* Status approved */}
+                    <td className="p-3 text-center">
+                      <span className={`px-2 py-0.5 rounded-[5px] text-[10px] font-mono font-bold ${
+                        user.isApproved 
+                          ? "bg-emerald-500/10 text-emerald-400" 
+                          : "bg-amber-500/10 text-amber-400 animate-pulse"
+                      }`}>
+                        {user.isApproved ? "HOMOLOGADO" : "PENDENTE"}
+                      </span>
+                    </td>
+
+                    {/* Approve/Decline actions */}
+                    <td className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {!user.isApproved ? (
+                          <button
+                            onClick={async () => {
+                              const updatedUser = { ...user, isApproved: true };
+                              onUpdateUser(updatedUser);
+                              setNotification({ 
+                                type: "success", 
+                                message: `Aluno ${user.name} homologado com sucesso!` 
+                              });
+                              if (localStorage.getItem("gmail_oauth_token")) {
+                                await handleSendPasswordEmail(updatedUser);
+                              } else {
+                                setNotification({
+                                  type: "success",
+                                  message: `Aluno ${user.name} homologado! Clique no ícone de carta ao lado para autorizar o Gmail e enviar o e-mail de acesso.`
+                                });
+                              }
+                            }}
+                            className="p-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 transition cursor-pointer"
+                            title="Aprovar Aluno"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onUpdateUser({ ...user, isApproved: false })}
+                            className="p-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 transition cursor-pointer"
+                            title="Suspender Aluno"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        
+                        {/* Private Student Notes action */}
+                        {!user.isAdmin && (
+                          <button
+                            onClick={async () => {
+                              setActiveNotesStudentId(user.id);
+                              setCurrentNotesText("");
+                              setLoadingNotes(true);
+                              try {
+                                const notes = await fetchPrivateStudentNotesFromFirestore(user.id);
+                                setCurrentNotesText(notes);
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                setLoadingNotes(false);
+                              }
+                            }}
+                            className="p-1.5 rounded bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-400 transition cursor-pointer"
+                            title="Anotações Privadas do Coordenador"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Enviar Credenciais via Gmail */}
+                        <button
+                          disabled={emailSendingId === user.id}
+                          onClick={() => handleSendPasswordEmail(user)}
+                          className={`p-1.5 rounded border transition cursor-pointer ${
+                            emailSendingId === user.id
+                              ? "bg-slate-800 border-slate-700 text-slate-500 animate-pulse"
+                              : "bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/30 text-blue-400"
+                          }`}
+                          title="Enviar credenciais de acesso por E-mail (Gmail)"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Delete User */}
+                        {user.id !== currentUser.id && (
+                          <button
+                            onClick={() => setDeleteConfirmModal({
+                              isOpen: true,
+                              type: "user",
+                              id: user.id,
+                              name: user.name
+                            })}
+                            className="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 transition cursor-pointer"
+                            title="Excluir Usuário"
+                          >
+                            <Trash className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* --- SUBTAB 2: CREATE STUDY CYCLE --- */}
+      {activeSubTab === "cycle" && (
+        <div className="space-y-6">
+          {/* Collapsible Trigger Card */}
+          <div 
+            onClick={() => setIsCreateCycleOpen(!isCreateCycleOpen)}
+            className="bg-slate-950 p-5 rounded-2xl border border-slate-800 hover:border-amber-400/40 transition duration-300 flex items-center justify-between cursor-pointer group shadow-lg select-none"
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                <h3 className="text-base font-extrabold text-slate-100 uppercase tracking-wider">
+                  Gerador de Ciclo de Estudos
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400">
+                Clique para abrir ou recolher as opções de criação de ciclos de estudos semanais.
+              </p>
+            </div>
+            
+            <button
+              type="button"
+              className="flex items-center justify-center gap-2 bg-amber-400 group-hover:bg-amber-500 text-slate-950 font-black px-5 py-2.5 rounded-xl text-xs uppercase tracking-wider transition shadow-md"
+            >
+              <span>Criar</span>
+              <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isCreateCycleOpen ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+
+          {isCreateCycleOpen && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <h3 className="font-bold text-sm text-slate-200 mb-4 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-amber-400" />
+                  Parâmetros de Alocação do Ciclo
+                </h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Selecione o Aluno Alvo</label>
+                <select
+                  value={selectedStudentId}
+                  onChange={(e) => setSelectedStudentId(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 cursor-pointer notranslate"
+                  translate="no"
+                >
+                  <option value="">Selecione um aluno...</option>
+                  {approvedStudents.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.name} ({student.accessCFO ? "CFO" : ""} {student.accessSoldado ? "Soldado" : ""})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                {(() => {
+                  const selectedStudent = approvedStudents.find((student) => student.id === selectedStudentId);
+                  const maxWeeks = selectedStudent?.plan === "mensal" ? 4 : selectedStudent?.plan === "trimestral" ? 12 : 24;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs text-slate-400">Duração do Ciclo (Semanas)</label>
+                        {selectedStudent && (
+                          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                            Plano: {selectedStudent.plan === "mensal" ? "Mensal (Max 4 Sem)" : selectedStudent.plan === "trimestral" ? "Trimestral (Max 12 Sem)" : "Premium / Completo"}
+                          </span>
+                        )}
+                      </div>
+                      <select
+                        value={Math.ceil(cycleDays.length / 7)}
+                        onChange={(e) => {
+                          const weeks = parseInt(e.target.value) || 1;
+                          handleSetWeeks(weeks);
+                        }}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono cursor-pointer"
+                      >
+                        {Array.from({ length: maxWeeks }, (_, i) => i + 1).map((w) => (
+                          <option key={w} value={w}>
+                            {w} {w === 1 ? "Semana" : "Semanas"} ({w * 7} Dias)
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* Plano de Estudos / Detalhes do Ciclo por Período */}
+          <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-lg animate-fade-in">
+            <h3 className="font-bold text-sm text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-amber-400" />
+              Plano de Estudos & Detalhamento por Período
+            </h3>
+            <p className="text-xs text-slate-400">
+              Adicione orientações gerais, metas estratégicas e o cronograma do período (ex: metas mensais, quinzenais ou bimestrais) para guiar o aluno neste ciclo.
+            </p>
+            {/* Barra de Ferramentas de Formatação */}
+            <div className="flex flex-wrap gap-2 pb-1 border-b border-slate-850">
+              <button
+                type="button"
+                onClick={() => setCycleDetails(prev => prev + " **texto**")}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-850 hover:border-amber-400/40 border border-slate-800 rounded-lg text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center gap-1 cursor-pointer"
+                title="Inserir Negrito"
+              >
+                <span className="font-extrabold text-amber-400">B</span> Negrito
+              </button>
+              <button
+                type="button"
+                onClick={() => setCycleDetails(prev => prev + " *texto*")}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-850 hover:border-amber-400/40 border border-slate-800 rounded-lg text-[10px] font-medium italic text-slate-300 hover:text-white transition flex items-center gap-1 cursor-pointer"
+                title="Inserir Itálico"
+              >
+                <span className="text-amber-400 font-bold">I</span> Itálico
+              </button>
+              <button
+                type="button"
+                onClick={() => setCycleDetails(prev => prev + "\n- Item")}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-850 hover:border-amber-400/40 border border-slate-800 rounded-lg text-[10px] text-slate-300 hover:text-white transition flex items-center gap-1 cursor-pointer"
+                title="Inserir Meta de Tópico"
+              >
+                <span className="text-amber-400 font-bold">•</span> Lista
+              </button>
+              <button
+                type="button"
+                onClick={() => setCycleDetails(prev => prev + "\n### Título")}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-850 hover:border-amber-400/40 border border-slate-800 rounded-lg text-[10px] text-slate-300 hover:text-white transition flex items-center gap-1 cursor-pointer"
+                title="Inserir Subtítulo"
+              >
+                <span className="font-black text-amber-400 text-[9px]">H3</span> Subtítulo
+              </button>
+              <button
+                type="button"
+                onClick={() => setCycleDetails(prev => prev + "\n---\n")}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-850 hover:border-amber-400/40 border border-slate-800 rounded-lg text-[10px] text-slate-300 hover:text-white transition flex items-center gap-1 cursor-pointer"
+                title="Inserir Linha Divisória"
+              >
+                <span className="text-amber-400 font-bold">―</span> Divisor
+              </button>
+            </div>
+            <textarea
+              value={cycleDetails}
+              onChange={(e) => setCycleDetails(e.target.value)}
+              placeholder="Exemplo: Plano de Estudos (15/07 a 15/08)
+- Foco principal: Finalizar os tópicos de Direito Constitucional e Direitos Humanos.
+- Revisões diárias de Português e Matemática através de mapas mentais.
+- Realizar no mínimo 150 questões semanais com taxa de acerto acima de 75%."
+              className="w-full bg-slate-900 border border-slate-800 hover:border-amber-400/50 focus:border-amber-400 rounded-xl p-4 text-xs text-slate-200 placeholder-slate-650 focus:outline-none transition min-h-[140px] font-sans"
+              rows={5}
+            />
+          </div>
+
+          {/* Builder Day-by-Day Editor */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 border-b border-slate-850 pb-2">
+              Planejamento de Metas Diárias (Máximo 10 matérias por dia)
+            </h4>
+
+            {/* Custom Cycle Length Controls */}
+            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl space-y-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 block">
+                Duração do Ciclo Atual: <span className="text-white font-mono font-black">{cycleDays.length} Dias</span>
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddDayToCycle}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:border-amber-400/40 text-xs rounded-lg text-slate-200 font-semibold cursor-pointer transition"
+                >
+                  +1 Dia
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddMultipleDaysToCycle(7)}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs rounded-lg font-bold cursor-pointer transition shadow-sm"
+                >
+                  +7 Dias de Uma Vez
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddMultipleDaysToCycle(14)}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:border-amber-400/40 text-xs rounded-lg text-slate-200 font-semibold cursor-pointer transition"
+                >
+                  +14 Dias de Uma Vez
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemoveLastDayFromCycle}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:border-rose-900 text-rose-400 text-xs rounded-lg font-semibold cursor-pointer transition"
+                  disabled={cycleDays.length <= 1}
+                >
+                  Remover Último Dia
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetCycleToDefault}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs rounded-lg text-slate-400 font-semibold cursor-pointer transition"
+                >
+                  Resetar para Padrão (7 Dias)
+                </button>
+              </div>
+            </div>
+
+            {cycleDays.length > 7 && (
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block">Navegar pelas Semanas do Ciclo:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: Math.ceil(cycleDays.length / 7) }, (_, i) => i + 1).map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => setAdminSelectedWeek(w)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition uppercase tracking-wider ${
+                        adminSelectedWeek === w
+                          ? "bg-amber-400 text-slate-950 shadow-md animate-pulse"
+                          : "text-slate-400 hover:text-slate-200 hover:bg-slate-950"
+                      }`}
+                    >
+                      {`Semana ${w < 10 ? '0' + w : w}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {cycleDays
+                .filter((day) => {
+                  if (cycleDays.length <= 7) return true;
+                  const dayWeek = Math.floor((day.dayNumber - 1) / 7) + 1;
+                  return dayWeek === adminSelectedWeek;
+                })
+                .map((day, idx) => {
+                  const actualDayNum = day.dayNumber;
+                  return (
+                    <div key={day.dayNumber} className="bg-slate-950/60 p-5 border border-slate-850 rounded-xl space-y-4 hover:border-amber-400/20 transition-all duration-300">
+                      <div className="flex items-center justify-between border-b border-slate-850 pb-2">
+                        <span className="text-xs font-extrabold text-amber-400 uppercase tracking-wider font-mono">
+                          {`Dia ${actualDayNum < 10 ? '0' + actualDayNum : actualDayNum}`}
+                        </span>
+                      </div>
+
+                  {/* Day subjects list */}
+                  <div className="space-y-2.5">
+                    {day.subjects.map((sub, sIdx) => (
+                      <div key={sIdx} className="flex items-center gap-1.5 animate-fade-in">
+                        <input
+                          type="text"
+                          value={sub}
+                          onChange={(e) => handleDaySubjectChange(day.dayNumber, sIdx, e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1 text-[11px] text-slate-200 focus:border-amber-400/50 focus:outline-none transition"
+                          placeholder="Ex: Português: Crase"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSubjectFromDay(day.dayNumber, sIdx)}
+                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 transition"
+                          title="Remover"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {day.subjects.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={() => handleAddSubjectToDay(day.dayNumber)}
+                        className="text-[10px] font-bold text-amber-400 hover:underline flex items-center gap-1 mt-1"
+                      >
+                        + Adicionar Matéria ({day.subjects.length}/10)
+                      </button>
+                    )}
+
+                    {/* Observação para o Aluno */}
+                    <div className="space-y-1 pt-2 border-t border-slate-850">
+                      <label className="block text-[9px] uppercase font-bold text-slate-400">Observação para o Aluno</label>
+                      <textarea
+                        value={day.notes || ""}
+                        onChange={(e) => {
+                          setCycleDays(cycleDays.map(cd => cd.dayNumber === day.dayNumber ? { ...cd, notes: e.target.value } : cd));
+                        }}
+                        placeholder="Insira observações específicas para este dia do aluno..."
+                        className="w-full bg-slate-900 border border-slate-850 hover:border-amber-400/50 focus:border-amber-400 rounded-lg p-2 text-[11px] text-slate-200 placeholder-slate-650 focus:outline-none transition font-sans"
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+              <button
+                onClick={handleSaveStudentCycle}
+                className="w-full bg-amber-400 hover:bg-amber-500 text-slate-950 font-black py-3 rounded-xl text-xs transition uppercase tracking-wider cursor-pointer shadow-md"
+              >
+                Publicar Ciclo para o Aluno Selecionado
+              </button>
+              
+              {!showDeleteConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full bg-slate-900 border border-rose-900/40 hover:bg-rose-950/25 text-rose-400 font-bold pt-[10px] pb-3 rounded-xl text-xs transition uppercase tracking-wider cursor-pointer shadow-md"
+                >
+                  Excluir Todos os Ciclos do Aluno
+                </button>
+              ) : (
+                <div className="flex flex-col gap-2 w-full">
+                  <div className="text-[10px] text-rose-400 font-bold text-center uppercase tracking-wide">
+                    ⚠️ Atenção: Isso excluirá definitivamente todos os ciclos e semanas deste aluno!
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDeleteStudentCycle}
+                      className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-xl text-[10px] transition uppercase tracking-wider cursor-pointer shadow-md"
+                    >
+                      Confirmar Exclusão de Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl text-[10px] transition uppercase tracking-wider cursor-pointer shadow-md"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )}
+
+      {/* --- SUBTAB 3: VIEW STUDENT STATS --- */}
+      {activeSubTab === "stats" && (() => {
+        // Fetch all student logs for general master grid
+        const logsList: any[] = [];
+        approvedStudents.forEach((student) => {
+          const saved = localStorage.getItem(`performance_logs_${student.id}`);
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((log) => {
+                  logsList.push({
+                    ...log,
+                    studentName: student.name,
+                    studentEmail: student.email,
+                  });
+                });
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        });
+        const sortedAllLogs = logsList.sort((a, b) => (b.id || "").localeCompare(a.id || ""));
+
+        return (
+          <div className="space-y-6">
+            {/* Quick selector for deep auditing */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white shadow-xl space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                <Users className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h3 className="font-bold text-sm uppercase tracking-wider">Auditoria Individual de Alunos</h3>
+                  <p className="text-[10px] text-slate-400">Selecione um aluno específico para ver o Caderno de Erros completo e os diagnósticos detalhados.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedStudentId}
+                  onChange={(e) => setSelectedStudentId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-2.5 text-xs text-slate-200 cursor-pointer focus:outline-none focus:border-amber-400"
+                >
+                  <option value="">-- Selecione o Aluno para Auditoria Individual --</option>
+                  {approvedStudents.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.name} ({student.email})
+                    </option>
+                  ))}
+                </select>
+                {selectedStudentId && (
+                  <button
+                    onClick={() => setSelectedStudentId("")}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-xl cursor-pointer transition"
+                  >
+                    Ver Painel Geral
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {selectedStudentId ? (
+              <div className="border border-slate-800 rounded-2xl p-2 bg-slate-950/20">
+                <PerformanceStats currentUser={currentUser} overrideStudentId={selectedStudentId} />
+              </div>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white shadow-xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <BarChart2 className="w-5 h-5 text-amber-400" />
+                    <div>
+                      <h3 className="font-bold text-sm uppercase tracking-wider text-slate-200">Painel Geral de Dificuldades (Toda a Tropa)</h3>
+                      <p className="text-[10px] text-slate-400">Visão consolidada de todas as matérias, assuntos específicos e motivos de erro lançados por todos os alunos.</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold bg-amber-400/10 text-amber-400 px-2.5 py-1 rounded-md">
+                    Total Lançamentos: {sortedAllLogs.length}
+                  </span>
+                </div>
+
+                {sortedAllLogs.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 text-xs">
+                    Nenhum aluno lançou histórico de desempenho ou caderno de erros até o momento.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-semibold uppercase tracking-wider">
+                          <th className="p-3">Aluno / Turma</th>
+                          <th className="p-3">Matéria / Assunto</th>
+                          <th className="p-3">Tópico Detalhado</th>
+                          <th className="p-3">Motivo Principal do Erro</th>
+                          <th className="p-3 text-center">Acertos</th>
+                          <th className="p-3 text-center">Aproveitamento</th>
+                          <th className="p-3 text-center">Data</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/40">
+                        {sortedAllLogs.map((log) => {
+                          const pct = Math.round((log.questionsCorrect / log.questionsAttempted) * 100);
+                          return (
+                            <tr key={log.id} className="hover:bg-slate-950/40 transition">
+                              <td className="p-3">
+                                <span className="font-bold text-amber-400 block">{log.studentName}</span>
+                                <span className="text-[10px] text-slate-500 block truncate max-w-[150px]">{log.studentEmail}</span>
+                              </td>
+                              <td className="p-3">
+                                <span className="font-extrabold text-slate-200 block">{log.subject}</span>
+                              </td>
+                              <td className="p-3">
+                                <span className="text-slate-300 block">{log.topic}</span>
+                              </td>
+                              <td className="p-3">
+                                <div className="flex items-center gap-1.5">
+                                  <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                  <span className="text-slate-300 font-medium">{log.reasonForError}</span>
+                                </div>
+                              </td>
+                              <td className="p-3 text-center font-mono text-slate-400">
+                                {log.questionsCorrect}/{log.questionsAttempted}
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                                  pct >= 70
+                                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                    : pct >= 50
+                                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                    : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                }`}>
+                                  {pct}%
+                                </span>
+                              </td>
+                              <td className="p-3 text-center text-slate-500 font-mono">
+                                {log.date}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* --- SUBTAB 4: WEEKLY FEEDBACK REPORTS / CORREIO --- */}
+      {activeSubTab === "correio" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Writer form */}
+            <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-850 space-y-4">
+              <h3 className="font-bold text-sm text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                <Send className="w-4 h-4" />
+                Redigir Relatório de Desempenho
+              </h3>
+
+              <form onSubmit={handleSendReport} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Destinatário Aluno</label>
+                    <select
+                      value={selectedStudentId}
+                      onChange={(e) => setSelectedStudentId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 cursor-pointer"
+                      required
+                    >
+                      <option value="">Escolha...</option>
+                      {approvedStudents.map((student) => (
+                        <option key={student.id} value={student.id}>{student.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Semana de Referência</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="52"
+                      value={reportWeek}
+                      onChange={(e) => setReportWeek(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs text-slate-400">Parecer de Desempenho / Orientações do Coordenador</label>
+                    <button
+                      type="button"
+                      onClick={handleAiGenerateReport}
+                      disabled={aiGeneratingReport}
+                      className="inline-flex items-center gap-1.5 text-[10px] bg-slate-900 border border-amber-450/40 text-amber-400 hover:text-slate-950 hover:bg-amber-400 hover:border-amber-400 px-2 py-1 rounded font-bold transition disabled:opacity-50"
+                    >
+                      {aiGeneratingReport ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                          <span>Analisando logs...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>Gerar com I.A. ⚡</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <textarea
+                    rows={6}
+                    value={reportContent}
+                    onChange={(e) => setReportContent(e.target.value)}
+                    placeholder="Escreva seu parecer tático aqui... Ou clique em 'Gerar com I.A. ⚡' para obter uma análise cirúrgica automática baseada no histórico de acertos do recruta!"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-amber-400 hover:bg-amber-500 text-slate-950 font-black py-2.5 rounded-xl text-xs transition uppercase tracking-wider cursor-pointer shadow-md"
+                >
+                  Enviar Relatório Semanal
+                </button>
+              </form>
+            </div>
+
+            {/* List of Sent reports */}
+            <div className="bg-slate-950/40 p-5 rounded-xl border border-slate-850 space-y-4">
+              <h3 className="font-bold text-sm text-slate-200 uppercase tracking-wider">
+                Relatórios Enviados Anteriores
+              </h3>
+
+              <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
+                {existingReports.map((report) => {
+                  const student = allUsers.find((u) => u.id === report.studentId);
+                  return (
+                    <div key={report.id} className="bg-slate-900/60 p-3.5 rounded-lg border border-slate-800 space-y-2 relative overflow-hidden">
+                      {reportToDeleteId === report.id && (
+                        <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-3 text-center z-10 animate-fade-in">
+                          <span className="text-[11px] font-bold text-slate-200">Excluir este relatório?</span>
+                          <div className="flex items-center gap-2 mt-2">
+                            <button
+                              type="button"
+                              onClick={() => setReportToDeleteId(null)}
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] font-bold rounded cursor-pointer text-slate-300"
+                            >
+                              Não
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDeleteReport(report.id)}
+                              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-[10px] font-extrabold rounded text-white cursor-pointer"
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Aluno: {student ? student.name : "Desconhecido"}</span>
+                          <span className="text-[9px] text-amber-400 font-bold font-mono">Semana {report.weekNumber}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteReport(report.id)}
+                          className="p-1 rounded hover:bg-rose-950 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                          title="Excluir"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-300 whitespace-pre-line leading-relaxed">
+                        {report.content}
+                      </p>
+                      <span className="text-[9px] text-slate-500 font-mono block text-right">
+                        Enviado em: {report.createdAt.split("T")[0]}
+                      </span>
+                    </div>
+                  );
+                })}
+
+                {existingReports.length === 0 && (
+                  <div className="text-center py-10 text-slate-500 text-xs italic">
+                    Nenhum relatório de desempenho postado no momento.
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* --- SUBTAB 5: CONTENT LIBRARY / BIBLIOTECA --- */}
+      {activeSubTab === "content" && (
+        <div className="space-y-4">
+          <ContentArea currentUser={currentUser} />
+        </div>
+      )}
+
+      {/* --- SUBTAB 6: SYLLABUS VALIDATION & ALIGNMENT --- */}
+      {activeSubTab === "syllabus_validation" && (() => {
+        const getSyllabusMappingForRaioX = (subject: string, topicTitle: string) => {
+          const cfoSections = valSyllabus.filter(s => s.category === "cfo");
+          const section = cfoSections.find(s => s.subject.toLowerCase().trim() === subject.toLowerCase().trim());
+          if (!section) return null;
+          
+          const topic = section.topics.find(t => {
+            const tTitle = t.title.toLowerCase();
+            const rTitle = topicTitle.toLowerCase();
+            return tTitle.includes(rTitle) || rTitle.includes(tTitle);
+          });
+          
+          if (topic) {
+            return { sectionName: section.subject, topicName: topic.title };
+          }
+          return null;
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* Header Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400/5 rounded-full blur-3xl" />
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative z-10">
+                <div>
+                  <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-1">
+                    Controle de Qualidade do Edital
+                  </span>
+                  <h3 className="text-lg font-black text-white uppercase tracking-wider">
+                    {valSyllabusSubTab === "edital" 
+                      ? `Validador & Alinhamento de Edital ${valCategory.toUpperCase()} PMBA` 
+                      : `Alinhamento & Edição de Raio-X ${valCategory.toUpperCase()} PMBA`}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {valSyllabusSubTab === "edital"
+                      ? `Gerencie, edite e valide os tópicos do edital verticalizado para garantir 100% de conformidade com o edital ${valCategory.toUpperCase()} PMBA.`
+                      : `Gerencie as frequências de incidência e garanta que cada tema do Raio-X esteja corretamente mapeado ao Edital Verticalizado.`}
+                  </p>
+
+                  <div className="flex items-center gap-1 mt-3 bg-slate-950 p-1 rounded-xl border border-slate-850 w-fit">
+                    <button
+                      onClick={() => {
+                        setValCategory("cfo");
+                        setValSelectedStudentId("");
+                      }}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg transition cursor-pointer ${
+                        valCategory === "cfo" ? "bg-amber-400 text-slate-950" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      🎖️ CFO PMBA
+                    </button>
+                    <button
+                      onClick={() => {
+                        setValCategory("soldado");
+                        setValSelectedStudentId("");
+                      }}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg transition cursor-pointer ${
+                        valCategory === "soldado" ? "bg-amber-400 text-slate-950" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      🛡️ Soldado PMBA
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2.5">
+                  {valSyllabusSubTab === "edital" ? (
+                    <>
+                      <button
+                        onClick={handleValValidateAll}
+                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-emerald-500/15 cursor-pointer"
+                      >
+                        <Check className="w-4 h-4" />
+                        Validar Todos os Tópicos
+                      </button>
+                      <button
+                        onClick={handleValResetToDefault}
+                        className="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Restaurar Padrão Oficial
+                      </button>
+                      <button
+                        onClick={handleValSave}
+                        disabled={valSaving}
+                        className="px-4 py-2 bg-amber-400 hover:bg-amber-500 disabled:bg-amber-400/40 text-slate-950 font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-amber-400/15 cursor-pointer"
+                      >
+                        {valSaving ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Salvando...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4" />
+                            Salvar Alterações
+                          </>
+                        )}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleRaioXReset}
+                        className="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Restaurar Raio-X Padrão
+                      </button>
+                      <button
+                        onClick={handleRaioXSave}
+                        className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-amber-400/15 cursor-pointer"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Salvar Alterações do Raio-X
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {valStatusMsg && (
+                <div className={`mt-4 p-3.5 rounded-xl border text-xs flex items-center gap-2.5 ${
+                  valStatusMsg.type === "success" 
+                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300" 
+                    : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+                }`}>
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{valStatusMsg.text}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Subtab Navigation */}
+            <div className="flex items-center gap-1.5 border-b border-slate-800 pb-px">
+              <button
+                onClick={() => {
+                  setValSyllabusSubTab("edital");
+                  setValStatusMsg(null);
+                }}
+                className={`px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all relative cursor-pointer ${
+                  valSyllabusSubTab === "edital"
+                    ? "text-amber-400 border-b-2 border-amber-400"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Edital Verticalizado Completo
+              </button>
+              <button
+                onClick={() => {
+                  setValSyllabusSubTab("raiox");
+                  setValStatusMsg(null);
+                }}
+                className={`px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all relative cursor-pointer ${
+                  valSyllabusSubTab === "raiox"
+                    ? "text-amber-400 border-b-2 border-amber-400"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Mapeamento & Alinhamento de Raio-X CFO
+              </button>
+            </div>
+
+            {valSyllabusSubTab === "edital" ? (
+              <>
+                {/* Controller selectors */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Student Selector */}
+                  <div className="md:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-1.5">
+                    <label className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">
+                      Selecionar Alvo do Alinhamento:
+                    </label>
+                    <select
+                      value={valSelectedStudentId}
+                      onChange={(e) => setValSelectedStudentId(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 text-xs text-slate-200 px-3 py-2.5 rounded-xl focus:outline-none focus:border-amber-400 font-medium"
+                    >
+                      {approvedStudents.filter(student => valCategory === "cfo" ? student.accessCFO : !student.accessCFO).length === 0 && (
+                        <option value="">Nenhum aluno cadastrado nesta categoria</option>
+                      )}
+                      {approvedStudents
+                        .filter(student => valCategory === "cfo" ? student.accessCFO : !student.accessCFO)
+                        .map(student => (
+                          <option key={student.id} value={student.id}>
+                            👤 Aluno: {student.name} ({student.email})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Subject Filter */}
+                  <div className="md:col-span-3 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-1.5">
+                    <label className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">
+                      Filtrar por Matéria:
+                    </label>
+                    <select
+                      value={valSubjectFilter}
+                      onChange={(e) => setValSubjectFilter(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 text-xs text-slate-200 px-3 py-2.5 rounded-xl focus:outline-none"
+                    >
+                      <option value="Todos">Todas as Matérias</option>
+                      {Array.from(new Set(valSyllabus.filter(s => s.category === valCategory).map(s => s.subject))).map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Search Box */}
+                  <div className="md:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-1.5">
+                    <label className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">
+                      Buscar Termo nos Assuntos:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: LGPD, Polícia Militar, Inquérito..."
+                      value={valSearch}
+                      onChange={(e) => setValSearch(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 text-xs text-slate-200 px-3 py-2.5 rounded-xl focus:outline-none focus:border-amber-400 placeholder-slate-600 font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Obsolete Scan Alert */}
+                {obsoleteTopicsList.length > 0 && (
+                  <div className="bg-rose-500/10 border-2 border-rose-500/20 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-black text-rose-400 uppercase tracking-wider">Tópicos Fora do Edital Detectados!</h4>
+                        <p className="text-xs text-slate-300 mt-1">
+                          Encontramos {obsoleteTopicsList.length} assunto(s) que não constam no edital oficial {valCategory.toUpperCase()} PMBA (ex: <strong>Lei de Acesso à Informação</strong>).
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {obsoleteTopicsList.map((item, idx) => (
+                            <span key={idx} className="text-[9px] bg-slate-950 text-rose-400 px-2 py-0.5 rounded-md font-mono border border-rose-500/10">
+                              {item.subject} &gt; {item.topic.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handlePurgeAllObsolete}
+                      className="px-3.5 py-2 bg-rose-500 hover:bg-rose-600 text-slate-950 text-xs font-black rounded-xl transition shrink-0 cursor-pointer shadow-lg shadow-rose-500/20"
+                    >
+                      Purgar Obsoletos
+                    </button>
+                  </div>
+                )}
+
+                {/* Main content grid */}
+                {valLoading ? (
+                  <div className="flex flex-col items-center justify-center py-24 bg-slate-900 border border-slate-800 rounded-3xl gap-3">
+                    <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
+                    <p className="text-xs text-slate-400 font-medium">Carregando dados do edital para validação...</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6">
+                    {valSyllabus
+                      .filter(section => section.category === valCategory)
+                      .filter(section => valSubjectFilter === "Todos" || section.subject === valSubjectFilter)
+                      .map(section => {
+                        const filteredTopics = section.topics.filter(topic => 
+                          !valSearch || topic.title.toLowerCase().includes(valSearch.toLowerCase())
+                        );
+
+                        if (valSearch && filteredTopics.length === 0) return null;
+
+                        return (
+                          <div key={section.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden transition hover:border-slate-750">
+                            {/* Section Header */}
+                            <div className="bg-slate-950/40 px-5 py-3.5 border-b border-slate-800/60 flex items-center justify-between">
+                              <span className="text-xs font-black text-amber-400 uppercase tracking-wider font-mono">
+                                🏆 {section.subject}
+                              </span>
+                              <span className="text-[10px] bg-slate-900 text-slate-400 px-2 py-0.5 rounded-md font-mono border border-slate-800/50">
+                                {section.topics.length} tópicos cadastrados
+                              </span>
+                            </div>
+
+                            {/* Section Topics List */}
+                            <div className="p-4 space-y-3.5">
+                              <div className="grid grid-cols-1 gap-3">
+                                {filteredTopics.map(topic => {
+                                  const isTopicValid = (topic as any).isValidated;
+                                  return (
+                                    <div 
+                                      key={topic.id} 
+                                      className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border transition ${
+                                        isTopicValid 
+                                          ? "bg-slate-950/40 border-slate-800/80" 
+                                          : "bg-amber-500/5 border-amber-500/10"
+                                      }`}
+                                    >
+                                      {/* Topic Input edit */}
+                                      <div className="flex-1">
+                                        <input 
+                                          type="text" 
+                                          value={topic.title} 
+                                          onChange={(e) => handleValEditTopicTitle(section.id, topic.id, e.target.value)}
+                                          className="w-full bg-slate-900/60 hover:bg-slate-900 border border-slate-800/80 focus:border-amber-400 rounded-lg px-3 py-2 text-xs font-medium text-slate-200 focus:outline-none transition"
+                                          placeholder="Nome do assunto"
+                                        />
+                                      </div>
+
+                                      {/* Controls */}
+                                      <div className="flex items-center justify-end gap-2 shrink-0">
+                                        {/* Validate state button */}
+                                        <button
+                                          onClick={() => handleValToggleValidated(section.id, topic.id)}
+                                          className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5 ${
+                                            isTopicValid 
+                                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                                              : "bg-amber-400/10 border-amber-400/20 text-amber-400"
+                                          }`}
+                                          title={isTopicValid ? "Marcado como Alinhado" : "Clique para Validar Alinhamento"}
+                                        >
+                                          <Check className={`w-3.5 h-3.5 ${isTopicValid ? "text-emerald-400" : "text-amber-400"}`} />
+                                          <span>{isTopicValid ? "Alinhado" : "Validar"}</span>
+                                        </button>
+
+                                        {/* Delete topic button */}
+                                        <button
+                                          onClick={() => handleValDeleteTopic(section.id, topic.id)}
+                                          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg transition cursor-pointer"
+                                          title="Excluir Tópico do Edital"
+                                        >
+                                          <Trash className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {filteredTopics.length === 0 && (
+                                  <div className="text-center py-6 text-slate-500 text-xs italic">
+                                    Nenhum assunto correspondente à busca nesta matéria.
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Add Topic block */}
+                              <div className="flex items-center gap-2 mt-4 pt-3.5 border-t border-slate-800/60">
+                                <input
+                                  type="text"
+                                  placeholder={`Adicionar novo assunto em ${section.subject}...`}
+                                  value={valNewTopicTitleMap[section.id] || ""}
+                                  onChange={(e) => setValNewTopicTitleMap(prev => ({ ...prev, [section.id]: e.target.value }))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      handleValAddTopic(section.id);
+                                    }
+                                  }}
+                                  className="flex-1 bg-slate-950 border border-slate-850 hover:border-slate-805 text-xs text-slate-300 px-3 py-2 rounded-xl placeholder-slate-600 focus:outline-none focus:border-amber-400 transition"
+                                />
+                                <button
+                                  onClick={() => handleValAddTopic(section.id)}
+                                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-amber-400 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Inserir
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Controllers for Raio-X tab */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Subject Filter */}
+                  <div className="md:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-1.5">
+                    <label className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">
+                      Filtrar por Disciplina do Raio-X:
+                    </label>
+                    <select
+                      value={raioxEditSubject}
+                      onChange={(e) => setRaioxEditSubject(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 text-xs text-slate-200 px-3 py-2.5 rounded-xl focus:outline-none focus:border-amber-400 font-medium"
+                    >
+                      <option value="Todos">Todas as Disciplinas</option>
+                      {valRaioXCfo.map(sub => (
+                        <option key={sub.subject} value={sub.subject}>{sub.subject}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Search box */}
+                  <div className="md:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-1.5">
+                    <label className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">
+                      Buscar Termo nos Tópicos:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Direito Penal, Excel, Crase..."
+                      value={raioxEditSearch}
+                      onChange={(e) => setRaioxEditSearch(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 text-xs text-slate-200 px-3 py-2.5 rounded-xl focus:outline-none focus:border-amber-400 placeholder-slate-600 font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Main Raio-X Subjects Grid */}
+                <div className="grid grid-cols-1 gap-6">
+                  {valRaioXCfo
+                    .filter(subj => raioxEditSubject === "Todos" || subj.subject === raioxEditSubject)
+                    .map((subj, subjIdx) => {
+                      const filteredTopics = subj.topics.filter(t =>
+                        !raioxEditSearch || t.topic.toLowerCase().includes(raioxEditSearch.toLowerCase())
+                      );
+
+                      if (raioxEditSearch && filteredTopics.length === 0) return null;
+
+                      return (
+                        <div key={subj.subject} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden transition hover:border-slate-750">
+                          {/* Subject Header */}
+                          <div className="bg-slate-950/40 px-5 py-4 border-b border-slate-800/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-xs font-black text-amber-400 uppercase tracking-wider font-mono">
+                                📊 {subj.subject}
+                              </span>
+                              <input
+                                type="text"
+                                value={subj.questionsPerExam}
+                                onChange={(e) => {
+                                  const updated = [...valRaioXCfo];
+                                  const sIdx = valRaioXCfo.findIndex(s => s.subject === subj.subject);
+                                  if (sIdx !== -1) {
+                                    updated[sIdx] = { ...updated[sIdx], questionsPerExam: e.target.value };
+                                    setValRaioXCfo(updated);
+                                  }
+                                }}
+                                placeholder="ex: 10 questões/prova"
+                                className="bg-slate-950 hover:bg-slate-900 border border-slate-800/80 text-[10px] text-slate-300 px-2.5 py-1 rounded-lg font-medium w-36 focus:outline-none focus:border-amber-400 transition"
+                              />
+                            </div>
+                            
+                            <button
+                              onClick={() => {
+                                const sIdx = valRaioXCfo.findIndex(s => s.subject === subj.subject);
+                                if (sIdx !== -1) {
+                                  handleRaioXTopicAdd(sIdx);
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-500/20 text-amber-400 text-[10px] font-black uppercase rounded-xl transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Adicionar Tópico
+                            </button>
+                          </div>
+
+                          {/* Topics List */}
+                          <div className="p-4 space-y-4">
+                            {filteredTopics.map((t, topicIdx) => {
+                              const mapping = getSyllabusMappingForRaioX(subj.subject, t.topic);
+                              const realSubjIdx = valRaioXCfo.findIndex(s => s.subject === subj.subject);
+                              
+                              return (
+                                <div key={topicIdx} className="p-4 rounded-xl border border-slate-800/60 bg-slate-950/20 hover:border-slate-750 transition space-y-3">
+                                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                    {/* Topic Title Input */}
+                                    <div className="flex-1 w-full">
+                                      <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Título do Tópico (Raio-X)</label>
+                                      <input
+                                        type="text"
+                                        value={t.topic}
+                                        onChange={(e) => handleRaioXTopicChange(realSubjIdx, topicIdx, "topic", e.target.value)}
+                                        className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs font-semibold text-white focus:outline-none transition"
+                                      />
+                                    </div>
+
+                                    {/* Incidence score input */}
+                                    <div className="w-32 shrink-0">
+                                      <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Incidência (Frequência)</label>
+                                      <div className="flex items-center gap-1.5">
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          max="100"
+                                          value={t.incidence}
+                                          onChange={(e) => handleRaioXTopicChange(realSubjIdx, topicIdx, "incidence", parseInt(e.target.value) || 1)}
+                                          className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs font-mono text-center text-white focus:outline-none transition"
+                                        />
+                                        <span className="text-[10px] text-rose-400 font-bold font-mono">x</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Delete action */}
+                                    <div className="self-end md:self-center shrink-0">
+                                      <button
+                                        onClick={() => handleRaioXTopicDelete(realSubjIdx, topicIdx)}
+                                        className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg transition cursor-pointer"
+                                        title="Excluir Tópico do Raio-X"
+                                      >
+                                        <Trash className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* How it falls textarea description */}
+                                  <div className="w-full">
+                                    <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Como cai na prova (Guia Didático do Professor)</label>
+                                    <textarea
+                                      value={t.howItFalls}
+                                      onChange={(e) => handleRaioXTopicChange(realSubjIdx, topicIdx, "howItFalls", e.target.value)}
+                                      rows={2}
+                                      className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none font-medium leading-relaxed transition"
+                                      placeholder="Descreva detalhadamente como a banca aborda esse tema de forma prática e didática..."
+                                    />
+                                  </div>
+
+                                  {/* Dynamic alignment checker */}
+                                  <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-slate-850">
+                                    <span className="text-[10px] text-slate-500 font-bold uppercase">Status de Alinhamento:</span>
+                                    {mapping ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-lg font-semibold">
+                                        <Check className="w-3 h-3" />
+                                        Mapeado ao Edital: <strong className="font-bold underline">{mapping.sectionName} &gt; {mapping.topicName}</strong>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-[10px] bg-rose-500/10 border border-rose-500/20 text-rose-400 px-2.5 py-0.5 rounded-lg font-semibold">
+                                        <AlertCircle className="w-3 h-3 text-rose-400" />
+                                        Não Encontrado no Edital Verticalizado (Atenção para desalinhamento!)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {filteredTopics.length === 0 && (
+                              <div className="text-center py-6 text-slate-500 text-xs italic">
+                                Nenhum tópico correspondente à busca nesta disciplina.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* --- SUBTAB 7: REDAÇÕES SUBMISSIONS & GRADING --- */}
+      {activeSubTab === "redacoes" && (() => {
+        const filteredEssays = allEssaySubmissions.filter(essay => {
+          const studentNameMatches = essay.studentName?.toLowerCase().includes(essaySearchQuery.toLowerCase());
+          const studentEmailMatches = essay.studentEmail?.toLowerCase().includes(essaySearchQuery.toLowerCase());
+          const themeMatches = essay.theme?.toLowerCase().includes(essaySearchQuery.toLowerCase());
+          const matchesSearch = studentNameMatches || studentEmailMatches || themeMatches;
+          
+          if (essayStatusFilter === "all") return matchesSearch;
+          return essay.status === essayStatusFilter && matchesSearch;
+        });
+
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h3 className="font-bold text-base text-white uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-amber-400" />
+                  Painel de Correção & Gestão de Redações
+                </h3>
+                <p className="text-slate-400 text-xs mt-1">
+                  Acompanhe as redações enviadas pelos alunos, revise as notas da inteligência artificial e lance notas finais oficiais.
+                </p>
+              </div>
+              <div className="text-xs bg-slate-800 text-slate-300 px-3.5 py-1.5 rounded-lg font-mono flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                Total Recebido: {allEssaySubmissions.length} redações
+              </div>
+            </div>
+
+            {/* Search and filter controls */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-850 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Buscar Aluno ou Tema</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Nome do aluno, e-mail, assunto..."
+                  value={essaySearchQuery}
+                  onChange={(e) => setEssaySearchQuery(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-amber-400 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none placeholder:text-slate-700 font-medium"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Filtrar Status</label>
+                <div className="flex gap-2">
+                  {(["all", "pending", "corrected"] as const).map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setEssayStatusFilter(status)}
+                      className={`flex-1 py-2.5 text-xs font-bold uppercase rounded-xl border transition cursor-pointer ${
+                        essayStatusFilter === status
+                          ? "bg-amber-400 text-slate-950 border-amber-400 font-black"
+                          : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                      }`}
+                    >
+                      {status === "all" ? "Todas" : status === "pending" ? "Pendentes" : "Corrigidas"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {loadingEssays ? (
+              <div className="text-center py-12 flex flex-col items-center justify-center space-y-3">
+                <RefreshCw className="w-8 h-8 text-amber-500 animate-spin" />
+                <span className="text-xs text-slate-500 font-mono">Carregando redações do Firestore...</span>
+              </div>
+            ) : filteredEssays.length === 0 ? (
+              <div className="text-center py-12 bg-slate-950 rounded-2xl border border-slate-850">
+                <FileText className="w-10 h-10 text-slate-700 mx-auto mb-2" />
+                <p className="text-xs text-slate-400 italic">Nenhuma redação encontrada com os filtros selecionados.</p>
+              </div>
+            ) : (
+              <div className="bg-slate-950 border border-slate-850 rounded-2xl overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-900 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-850">
+                        <th className="py-3 px-4">Alunoc</th>
+                        <th className="py-3 px-4">Tema da Redação</th>
+                        <th className="py-3 px-4">Tipo</th>
+                        <th className="py-3 px-4">Data Envio</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4 text-center">Nota</th>
+                        <th className="py-3 px-4 text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850/40">
+                      {filteredEssays.map((essay) => (
+                        <tr key={essay.id} className="hover:bg-slate-900/40 transition">
+                          <td className="py-3.5 px-4">
+                            <span className="font-extrabold text-white block">{essay.studentName}</span>
+                            <span className="text-[10px] text-slate-500 block font-mono">{essay.studentEmail}</span>
+                          </td>
+                          <td className="py-3.5 px-4 font-medium text-slate-200 max-w-xs truncate" title={essay.theme}>
+                            {essay.theme}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                              essay.submissionType === "typed" 
+                                ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" 
+                                : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                            }`}>
+                              {essay.submissionType === "typed" ? "Digitada" : "Imagem"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-400 text-[11px]">
+                            {new Date(essay.createdAt).toLocaleString("pt-BR")}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              essay.status === "corrected"
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                : "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse"
+                            }`}>
+                              {essay.status === "corrected" ? "Corrigida" : "Pendente"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-black text-sm">
+                            {essay.status === "corrected" ? (
+                              <span className="text-emerald-400">{essay.score ?? essay.correctionDetails?.overallScore ?? "-"}</span>
+                            ) : (
+                              <span className="text-slate-600">-</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setSelectedEssay(essay)}
+                                className="px-2.5 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black rounded text-[10px] uppercase transition cursor-pointer"
+                              >
+                                {essay.status === "corrected" ? "Ver/Editar" : "Corrigir"}
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm("Deseja realmente deletar permanentemente esta submissão de redação?")) {
+                                    try {
+                                      await deleteEssaySubmissionFromFirestore(essay.id);
+                                      setAllEssaySubmissions(prev => prev.filter(e => e.id !== essay.id));
+                                      setNotification({ type: "success", message: "Redação excluída com sucesso!" });
+                                    } catch (err) {
+                                      console.error("Erro ao deletar redação:", err);
+                                      setNotification({ type: "error", message: "Erro ao deletar redação do servidor." });
+                                    }
+                                  }
+                                }}
+                                className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+                                title="Excluir Redação"
+                              >
+                                <Trash className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Essay grading modal */}
+            {selectedEssay && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden text-white shadow-2xl animate-fade-in my-8">
+                  {/* Modal Header */}
+                  <div className="p-6 border-b border-slate-800 flex items-start justify-between bg-slate-950/20">
+                    <div>
+                      <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-1">Avaliação e Homologação de Redação</span>
+                      <h3 className="text-base font-black text-white uppercase tracking-wider">
+                        Folha de Correção do Candidato
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Candidato: <strong className="text-amber-400 font-bold">{selectedEssay.studentName}</strong> ({selectedEssay.studentEmail})
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedEssay(null)}
+                      className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Modal Body */}
+                  <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+                    {/* Left Column: Essay Content */}
+                    <div className="lg:col-span-5 space-y-4 flex flex-col min-h-0">
+                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-850">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block mb-1">Tema Proposto</span>
+                        <h4 className="text-xs font-bold text-slate-200 leading-relaxed">{selectedEssay.theme}</h4>
+                      </div>
+
+                      <div className="flex-1 min-h-[250px] flex flex-col bg-slate-950 rounded-xl border border-slate-850 overflow-hidden">
+                        <div className="bg-slate-900/60 px-4 py-2 border-b border-slate-850 flex justify-between items-center">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Conteúdo da Redação</span>
+                          {selectedEssay.imageUrl && (
+                            <a
+                              href={selectedEssay.imageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[9px] font-black text-amber-400 hover:underline uppercase flex items-center gap-1"
+                            >
+                              Ver Foto Original <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1 font-serif text-sm leading-relaxed text-slate-300 bg-amber-400/[0.02] whitespace-pre-wrap select-text">
+                          {selectedEssay.essayText || "Nenhum texto digitado foi fornecido."}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Interactive Grading Form */}
+                    <div className="lg:col-span-7 space-y-4 overflow-y-auto pr-1">
+                      {/* AI Copilot Assisting Section */}
+                      <div className="bg-amber-400/5 border border-amber-400/10 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in">
+                        <div className="space-y-1">
+                          <h5 className="text-[11px] font-black text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Corretor Copiloto I.A.
+                          </h5>
+                          <p className="text-[10px] text-slate-400 leading-relaxed">
+                            Deixe a Inteligência Artificial ler este texto e preencher automaticamente as notas sugeridas, feedbacks de cada critério e a versão modelo de redação nota 100. Você poderá revisar e ajustar tudo antes de salvar!
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAICopilotCorrect}
+                          disabled={isAiRunningCopilot}
+                          className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-extrabold text-[10px] uppercase flex items-center gap-1.5 cursor-pointer shrink-0 transition"
+                        >
+                          {isAiRunningCopilot ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin text-slate-950" />
+                              <span>Processando...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3 h-3 text-slate-950" />
+                              <span>Sugerir Notas</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-850 pb-3">
+                          <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                            <Sparkles className="w-4 h-4 text-amber-400" />
+                            Critérios de Avaliação (Padrão PMBA)
+                          </h4>
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Pontuação Final</span>
+                            <span className="text-xl font-black text-amber-400">
+                              {editThemeScore + editCohesionScore + editArgumentScore + editGrammarScore} <span className="text-slate-600 text-xs">/ 100</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Theme and Structure (Max 20) */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-bold text-slate-200">1. Tema e Estrutura Textual (Introdução, Desenv. e Conclusão)</span>
+                            <span className="font-mono text-amber-400 font-extrabold">{editThemeScore} / 20</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="20"
+                            step="1"
+                            value={editThemeScore}
+                            onChange={(e) => setEditThemeScore(parseInt(e.target.value))}
+                            className="w-full accent-amber-400 bg-slate-800 rounded-lg appearance-none h-1.5 cursor-pointer"
+                          />
+                          <textarea
+                            rows={2}
+                            placeholder="Feedback específico para Tema e Estrutura..."
+                            value={editThemeFeedback}
+                            onChange={(e) => setEditThemeFeedback(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-850 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none placeholder:text-slate-700 font-medium"
+                          />
+                        </div>
+
+                        {/* Cohesion and Coherence (Max 25) */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-bold text-slate-200">2. Coesão e Coerência (Mecanismos de ligação e clareza)</span>
+                            <span className="font-mono text-amber-400 font-extrabold">{editCohesionScore} / 25</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="25"
+                            step="1"
+                            value={editCohesionScore}
+                            onChange={(e) => setEditCohesionScore(parseInt(e.target.value))}
+                            className="w-full accent-amber-400 bg-slate-800 rounded-lg appearance-none h-1.5 cursor-pointer"
+                          />
+                          <textarea
+                            rows={2}
+                            placeholder="Feedback específico para Coesão e Coerência..."
+                            value={editCohesionFeedback}
+                            onChange={(e) => setEditCohesionFeedback(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-850 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none placeholder:text-slate-700 font-medium"
+                          />
+                        </div>
+
+                        {/* Informative and Argumentative (Max 25) */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-bold text-slate-200">3. Informatividade e Argumentação (Poder de persuasão e repertório)</span>
+                            <span className="font-mono text-amber-400 font-extrabold">{editArgumentScore} / 25</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="25"
+                            step="1"
+                            value={editArgumentScore}
+                            onChange={(e) => setEditArgumentScore(parseInt(e.target.value))}
+                            className="w-full accent-amber-400 bg-slate-800 rounded-lg appearance-none h-1.5 cursor-pointer"
+                          />
+                          <textarea
+                            rows={2}
+                            placeholder="Feedback específico para Informatividade e Argumentação..."
+                            value={editArgumentFeedback}
+                            onChange={(e) => setEditArgumentFeedback(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-850 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none placeholder:text-slate-700 font-medium"
+                          />
+                        </div>
+
+                        {/* Grammar / Formal Norm (Max 30) */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-bold text-slate-200">4. Gramática e Norma Culta (Regência, concordância, crase, ortografia)</span>
+                            <span className="font-mono text-amber-400 font-extrabold">{editGrammarScore} / 30</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="30"
+                            step="1"
+                            value={editGrammarScore}
+                            onChange={(e) => setEditGrammarScore(parseInt(e.target.value))}
+                            className="w-full accent-amber-400 bg-slate-800 rounded-lg appearance-none h-1.5 cursor-pointer"
+                          />
+                          <textarea
+                            rows={2}
+                            placeholder="Feedback específico para Gramática e Norma Culta..."
+                            value={editGrammarFeedback}
+                            onChange={(e) => setEditGrammarFeedback(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-850 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none placeholder:text-slate-700 font-medium"
+                          />
+                        </div>
+
+                        {/* Suggested rewritten or corrections box */}
+                        <div className="space-y-1.5 pt-2 border-t border-slate-850">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Trecho Corrigido / Sugestões de Escrita</label>
+                          <textarea
+                            rows={3}
+                            placeholder="Escreva sugestões de reescrita para parágrafos problemáticos da redação..."
+                            value={editRewrittenText}
+                            onChange={(e) => setEditRewrittenText(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none placeholder:text-slate-700 font-medium"
+                          />
+                        </div>
+
+                        {/* Overall feedback summary */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Parecer Geral do Coordenador</label>
+                          <textarea
+                            rows={4}
+                            placeholder="Escreva um parecer geral motivador com dicas essenciais para o avanço do aluno..."
+                            value={editOverallFeedback}
+                            onChange={(e) => setEditOverallFeedback(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none placeholder:text-slate-700 font-medium"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex justify-between items-center">
+                    <span className="text-[9px] text-slate-500 font-mono">Homologação Oficial Tenente PMBA</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedEssay(null)}
+                        className="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-xl cursor-pointer transition"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setIsSavingCorrection(true);
+                          const totalScore = editThemeScore + editCohesionScore + editArgumentScore + editGrammarScore;
+                          
+                          const updatedEssay: EssaySubmission = {
+                            ...selectedEssay,
+                            status: "corrected",
+                            score: totalScore,
+                            correctionFeedback: editOverallFeedback || "Parabéns pelo envio de sua redação! Continue praticando constante para o edital PMBA.",
+                            correctionDetails: {
+                              themeAndStructureScore: editThemeScore,
+                              cohesionCoherenceScore: editCohesionScore,
+                              informativeArgumentativeScore: editArgumentScore,
+                              grammarFormalNormScore: editGrammarScore,
+                              overallScore: totalScore,
+                              themeFeedback: editThemeFeedback || "Bom domínio estrutural.",
+                              cohesionFeedback: editCohesionFeedback || "Coesão textual adequada.",
+                              argumentationFeedback: editArgumentFeedback || "Excelente repertório argumentativo.",
+                              grammarFeedback: editGrammarFeedback || "Atenção a pequenas desviações gramaticais de pontuação.",
+                              rewrittenText: editRewrittenText || "Excelente rascunho de desenvolvimento."
+                            }
+                          };
+
+                          try {
+                            await saveEssaySubmissionToFirestore(updatedEssay);
+                            
+                            // Update local list
+                            setAllEssaySubmissions(prev => 
+                              prev.map(e => e.id === selectedEssay.id ? updatedEssay : e)
+                            );
+                            
+                            setNotification({ type: "success", message: `Redação de ${selectedEssay.studentName} corrigida com sucesso! Nota final: ${totalScore}` });
+                            setSelectedEssay(null);
+                          } catch (err) {
+                            console.error("Erro ao salvar redação corrigida:", err);
+                            setNotification({ type: "error", message: "Erro ao salvar a correção no servidor." });
+                          } finally {
+                            setIsSavingCorrection(false);
+                          }
+                        }}
+                        disabled={isSavingCorrection}
+                        className="px-5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black rounded-xl cursor-pointer transition flex items-center gap-1.5 shadow"
+                      >
+                        {isSavingCorrection ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Salvando...</span>
+                          </>
+                        ) : (
+                          <span>Salvar & Publicar Correção</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* --- SUBTAB: THEMES MANAGEMENT & AI GENERATOR --- */}
+      {activeSubTab === "themes" && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-850 pb-5">
+            <div>
+              <h3 className="font-black text-base text-white uppercase tracking-wider flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-amber-400" />
+                Gerenciador de Temas de Redação
+              </h3>
+              <p className="text-slate-400 text-xs mt-1">
+                Cadastre novos temas de redação manualmente ou utilize a Inteligência Artificial para gerar propostas completas de redação contendo textos motivadores de apoio no padrão oficial da PMBA.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Column: Form to create / generate theme */}
+            <div className="lg:col-span-5 bg-slate-950 p-6 rounded-3xl border border-slate-850 space-y-4">
+              <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2 border-b border-slate-900 pb-3">
+                <Plus className="w-4 h-4 text-amber-400" />
+                Criar / Gerar Novo Tema
+              </h4>
+
+              <div className="space-y-3.5">
+                {/* Category Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-slate-400 text-[10px] uppercase font-bold block">Destinação / Cargo</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["geral", "soldado", "cfo"] as const).map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setThemeCategory(cat)}
+                        className={`py-2 rounded-xl text-xs font-bold border cursor-pointer transition uppercase tracking-wider ${
+                          themeCategory === cat
+                            ? "bg-amber-400/10 border-amber-400 text-amber-400 font-extrabold shadow"
+                            : "bg-slate-900 border-slate-850 text-slate-500 hover:bg-slate-850"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Title Input */}
+                <div className="space-y-1.5">
+                  <label className="text-slate-400 text-[10px] uppercase font-bold block">Título do Tema</label>
+                  <input
+                    type="text"
+                    value={themeTitle}
+                    onChange={(e) => setThemeTitle(e.target.value)}
+                    placeholder="Ex: Os desafios da atuação integrada das polícias no Nordeste..."
+                    className="w-full bg-slate-900 border border-slate-850 text-slate-200 text-xs px-4 py-3 rounded-xl focus:outline-none focus:border-amber-400/50"
+                  />
+                  <span className="text-[9px] text-slate-500 block leading-tight font-mono">
+                    *Se for gerar com I.A., você pode digitar algumas palavras-chave acima como semente de inspiração.
+                  </span>
+                </div>
+
+                {/* Motivating Text (supporting texts) */}
+                <div className="space-y-1.5">
+                  <label className="text-slate-400 text-[10px] uppercase font-bold block">Texto Motivador (Opcional - Suporta Markdown)</label>
+                  <textarea
+                    value={themeMotivatingText}
+                    onChange={(e) => setThemeMotivatingText(e.target.value)}
+                    placeholder="Cole ou redija o texto motivador que apoiará a escrita do aluno (notícias, estatísticas, leis)..."
+                    rows={8}
+                    className="w-full bg-slate-900 border border-slate-850 text-slate-200 text-xs font-serif p-4 rounded-xl focus:outline-none focus:border-amber-400/50 leading-relaxed resize-none"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleGenerateThemeWithAI}
+                    disabled={isGeneratingTheme}
+                    className="py-3 px-3 rounded-xl bg-slate-900 border border-amber-400/30 text-amber-400 hover:bg-slate-850 text-xs font-extrabold flex items-center justify-center gap-1.5 transition uppercase tracking-wider cursor-pointer"
+                  >
+                    {isGeneratingTheme ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Gerando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Gerar com I.A.</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveTheme}
+                    disabled={isSavingTheme}
+                    className="py-3 px-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 transition uppercase tracking-wider cursor-pointer"
+                  >
+                    {isSavingTheme ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                        <span>Salvando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-slate-950" />
+                        <span>Salvar Tema</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Existing Themes List */}
+            <div className="lg:col-span-7 bg-slate-950 p-6 rounded-3xl border border-slate-850 space-y-4">
+              <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2 border-b border-slate-900 pb-3">
+                <BookOpen className="w-4 h-4 text-slate-400" />
+                Biblioteca de Temas Cadastrados ({essayThemes.length})
+              </h4>
+
+              {loadingThemes ? (
+                <div className="flex flex-col items-center justify-center py-20 space-y-2">
+                  <RefreshCw className="w-8 h-8 text-amber-400 animate-spin" />
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Carregando temas do banco...</span>
+                </div>
+              ) : essayThemes.length === 0 ? (
+                <div className="text-center py-16 px-4 bg-slate-900 border border-slate-850 rounded-2xl">
+                  <BookOpen className="w-10 h-10 text-slate-700 mx-auto mb-2" />
+                  <span className="text-xs font-bold text-slate-400 block uppercase">Nenhum Tema Customizado</span>
+                  <p className="text-[10px] text-slate-500 max-w-xs mx-auto mt-1 leading-normal">
+                    Adicione ou gere temas de redação na coluna ao lado para disponibilizar aos seus candidatos. Caso nenhum tema customizado seja salvo, o sistema utilizará a biblioteca de presets integrada por padrão.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+                  {essayThemes.map((theme) => (
+                    <div
+                      key={theme.id}
+                      className="bg-slate-900 border border-slate-850/60 p-4 rounded-2xl flex items-start justify-between gap-4 hover:border-slate-800 transition relative overflow-hidden"
+                    >
+                      <div className="space-y-1.5 flex-1 pr-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20 font-mono">
+                            {theme.category || "geral"}
+                          </span>
+                          <span className="text-[9px] text-slate-500 font-mono">
+                            {new Date(theme.createdAt).toLocaleDateString("pt-BR")}
+                          </span>
+                        </div>
+                        <h5 className="text-xs font-bold text-slate-200 leading-normal">{theme.title}</h5>
+                        {theme.motivatingText && (
+                          <div className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed bg-slate-950 p-2.5 rounded-lg border border-slate-900 font-sans whitespace-pre-wrap">
+                            <strong>Texto Motivador:</strong> {theme.motivatingText}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteTheme(theme.id)}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+                        title="Deletar Tema"
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- SUBTAB 8: BACKUP & RESTORE --- */}
+      {activeSubTab === "backup" && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="font-bold text-base text-white uppercase tracking-wider flex items-center gap-2">
+              <Database className="w-5 h-5 text-amber-400" />
+              Backup & Restauração do Sistema
+            </h3>
+            <p className="text-slate-400 text-xs mt-1">
+              Exporte todos os cadastros, ciclos de estudo, logs de desempenho e redações para um arquivo JSON local, ou restaure dados a partir de um backup anterior.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Card Export */}
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-850 space-y-4 flex flex-col justify-between animate-fade-in">
+              <div className="space-y-2">
+                <div className="p-2.5 bg-amber-400/10 text-amber-400 rounded-xl w-fit border border-amber-400/20">
+                  <Download className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-black text-white uppercase tracking-wider">Exportar Banco de Dados</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Gere uma cópia completa de segurança em arquivo JSON contendo todos os dados do ecossistema de estudos (Usuários, Relatórios, Desempenho e Ciclos). Recomendado realizar periodicamente.
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-900">
+                <button
+                  onClick={async () => {
+                    setBackupStatus("Preparando exportação de segurança...");
+                    try {
+                      // Fetch full backups
+                      const reports = await fetchAllReportsFromFirestore();
+                      const essays = await fetchAllEssaySubmissions();
+                      
+                      const cyclesMap: Record<string, StudyCycle | null> = {};
+                      const perfLogsMap: Record<string, PerformanceLog[]> = {};
+                      
+                      const approvedStudents = allUsers.filter(u => u.isApproved && !u.isAdmin);
+                      
+                      setBackupStatus("Buscando ciclos e logs de desempenho...");
+                      await Promise.all(
+                        approvedStudents.map(async (student) => {
+                          const cycle = await fetchStudyCycleFromFirestore(student.id);
+                          if (cycle) cyclesMap[student.id] = cycle;
+                          
+                          const logs = await fetchPerformanceLogsFromFirestore(student.id);
+                          if (logs && logs.length > 0) perfLogsMap[student.id] = logs;
+                        })
+                      );
+
+                      const fullBackupPayload = {
+                        version: "1.0",
+                        exportDate: new Date().toISOString(),
+                        appName: "Tenente PMBA Coaching",
+                        data: {
+                          users: allUsers,
+                          weeklyReports: reports,
+                          essaySubmissions: essays,
+                          studyCycles: cyclesMap,
+                          performanceLogs: perfLogsMap
+                        }
+                      };
+
+                      setBackupStatus("Gerando arquivo JSON...");
+                      const jsonString = JSON.stringify(fullBackupPayload, null, 2);
+                      const blob = new Blob([jsonString], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      
+                      const link = document.createElement("a");
+                      const safeDate = new Date().toLocaleDateString("sv-SE");
+                      link.href = url;
+                      link.download = `backup_coaching_pmba_${safeDate}.json`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      
+                      setBackupStatus(null);
+                      setNotification({ type: "success", message: "Backup exportado com sucesso para download!" });
+                    } catch (err) {
+                      console.error("Erro ao gerar backup:", err);
+                      setBackupStatus(null);
+                      setNotification({ type: "error", message: "Erro ao gerar ou exportar backup de dados." });
+                    }
+                  }}
+                  className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black uppercase rounded-xl cursor-pointer transition flex items-center justify-center gap-2 shadow"
+                >
+                  <Download className="w-4 h-4" />
+                  {backupStatus ? backupStatus : "Fazer Backup Completo (JSON)"}
+                </button>
+              </div>
+            </div>
+
+            {/* Card Import */}
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-850 space-y-4 flex flex-col justify-between animate-fade-in">
+              <div className="space-y-2">
+                <div className="p-2.5 bg-cyan-500/10 text-cyan-400 rounded-xl w-fit border border-cyan-500/20">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-black text-white uppercase tracking-wider">Importar & Restaurar Dados</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Faça upload de um arquivo JSON de backup gerado anteriormente para restaurar ou sincronizar o banco de dados. <strong>Atenção:</strong> Isso pode sobrescrever ou mesclar registros existentes!
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-900 space-y-3">
+                <div className="relative border border-dashed border-slate-800 rounded-xl p-4 text-center hover:border-cyan-500 transition">
+                  <input
+                    type="file"
+                    accept=".json"
+                    disabled={isRestoring}
+                    onChange={(e) => {
+                      if (isRestoring) return;
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+
+                      const reader = new FileReader();
+                      reader.onload = async (evt) => {
+                        try {
+                          const parsed = JSON.parse(evt.target?.result as string);
+                          if (!parsed.version || !parsed.data) {
+                            alert("Erro: Formato de backup inválido. Chaves fundamentais ausentes.");
+                            return;
+                          }
+
+                          const { users, weeklyReports, essaySubmissions, studyCycles, performanceLogs } = parsed.data;
+                          
+                          const confirmRestore = window.confirm(
+                            `Backup carregado com sucesso!\n` +
+                            `Data da exportação: ${new Date(parsed.exportDate).toLocaleString()}\n\n` +
+                            `Encontrado no arquivo:\n` +
+                            `- Usuários: ${users?.length ?? 0}\n` +
+                            `- Redações: ${essaySubmissions?.length ?? 0}\n` +
+                            `- Relatórios: ${weeklyReports?.length ?? 0}\n\n` +
+                            `Deseja realmente iniciar a restauração desses dados na nuvem? Isso poderá mesclar ou atualizar dados existentes.`
+                          );
+
+                          if (!confirmRestore) return;
+
+                          setIsRestoring(true);
+                          setRestoreProgress("Iniciando restauração de segurança...");
+
+                          // Restore users
+                          if (users && users.length > 0) {
+                            for (let i = 0; i < users.length; i++) {
+                              const u = users[i];
+                              setRestoreProgress(`Restaurando usuários (${i + 1}/${users.length})...`);
+                              await saveUserToFirestore(u);
+                            }
+                          }
+
+                          // Restore weekly reports
+                          if (weeklyReports && weeklyReports.length > 0) {
+                            for (let i = 0; i < weeklyReports.length; i++) {
+                              const r = weeklyReports[i];
+                              setRestoreProgress(`Restaurando relatórios semanais (${i + 1}/${weeklyReports.length})...`);
+                              await saveReportToFirestore(r);
+                            }
+                          }
+
+                          // Restore essay submissions
+                          if (essaySubmissions && essaySubmissions.length > 0) {
+                            for (let i = 0; i < essaySubmissions.length; i++) {
+                              const es = essaySubmissions[i];
+                              setRestoreProgress(`Restaurando redações (${i + 1}/${essaySubmissions.length})...`);
+                              await saveEssaySubmissionToFirestore(es);
+                            }
+                          }
+
+                          // Restore study cycles
+                          if (studyCycles) {
+                            const cycleEntries = Object.entries(studyCycles);
+                            for (let i = 0; i < cycleEntries.length; i++) {
+                              const [studentId, cycle] = cycleEntries[i];
+                              if (cycle) {
+                                setRestoreProgress(`Restaurando ciclos de estudo (${i + 1}/${cycleEntries.length})...`);
+                                await saveStudyCycleToFirestore(studentId, cycle as StudyCycle);
+                              }
+                            }
+                          }
+
+                          // Restore performance logs
+                          if (performanceLogs) {
+                            const logEntries = Object.entries(performanceLogs);
+                            for (let i = 0; i < logEntries.length; i++) {
+                              const [studentId, logs] = logEntries[i];
+                              if (logs && Array.isArray(logs)) {
+                                for (let j = 0; j < logs.length; j++) {
+                                  setRestoreProgress(`Restaurando logs de desempenho (${i + 1}/${logEntries.length})...`);
+                                  await savePerformanceLogToFirestore(studentId, logs[j]);
+                                }
+                              }
+                            }
+                          }
+
+                          setIsRestoring(false);
+                          setRestoreProgress("");
+                          setNotification({ type: "success", message: "Banco de dados restaurado com sucesso a partir do backup de segurança!" });
+                          
+                          // Refresh current window to load fresh data
+                          setTimeout(() => window.location.reload(), 1500);
+
+                        } catch (err) {
+                          console.error("Erro na leitura do backup:", err);
+                          setIsRestoring(false);
+                          setRestoreProgress("");
+                          alert("Erro fatal ao analisar arquivo de backup JSON.");
+                        }
+                      };
+                      reader.readAsText(file);
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-1.5 py-1">
+                    <Upload className="w-6 h-6 text-slate-500" />
+                    <span className="text-xs text-slate-300 font-bold block">
+                      {isRestoring ? "Processando Restauro..." : "Clique ou arraste o arquivo .json de backup"}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono block">Apenas arquivos .json válidos</span>
+                  </div>
+                </div>
+
+                {isRestoring && (
+                  <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl text-xs space-y-2 animate-fade-in">
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                      <span className="font-extrabold text-cyan-400 uppercase tracking-wider text-[10px]">Progresso da Importação:</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 font-medium leading-relaxed">{restoreProgress}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Private Notes Modal */}
+      {activeNotesStudentId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full overflow-hidden text-white shadow-2xl animate-fade-in">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-800 flex items-start justify-between bg-slate-950/30">
+              <div>
+                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-1">
+                  Anotações de Segurança e Progresso
+                </span>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                  Anotações Privadas do Coordenador
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Aluno: <strong className="text-amber-400 font-bold">{allUsers.find(u => u.id === activeNotesStudentId)?.name}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveNotesStudentId(null)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              <p className="text-[11px] text-slate-400 leading-normal">
+                Estas anotações são de visibilidade <strong className="text-amber-400 font-bold">exclusiva da coordenação</strong>. O aluno não tem acesso a este conteúdo. Use para registrar observações sobre a constância, dificuldades específicas ou conversas de mentoria.
+              </p>
+
+              {loadingNotes ? (
+                <div className="py-8 text-center flex flex-col items-center justify-center space-y-2">
+                  <RefreshCw className="w-6 h-6 text-amber-500 animate-spin" />
+                  <span className="text-[10px] text-slate-500 font-mono">Buscando anotações no servidor...</span>
+                </div>
+              ) : (
+                <textarea
+                  rows={6}
+                  value={currentNotesText}
+                  onChange={(e) => setCurrentNotesText(e.target.value)}
+                  placeholder="Escreva aqui observações privadas sobre o desempenho e evolução do aluno..."
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl px-4 py-3 text-xs text-slate-200 focus:outline-none placeholder:text-slate-700 font-medium leading-relaxed"
+                />
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between">
+              <span className="text-[9px] text-slate-500 font-mono">
+                Acesso Restrito à Coordenação
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveNotesStudentId(null)}
+                  className="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={savingNotes || loadingNotes}
+                  onClick={async () => {
+                    setSavingNotes(true);
+                    try {
+                      await savePrivateStudentNotesToFirestore(activeNotesStudentId, currentNotesText);
+                      setNotification({ type: "success", message: "Anotações privadas do aluno salvas com sucesso!" });
+                      setActiveNotesStudentId(null);
+                    } catch (e) {
+                      console.error(e);
+                      setNotification({ type: "error", message: "Erro ao salvar anotações privadas." });
+                    } finally {
+                      setSavingNotes(false);
+                    }
+                  }}
+                  className="px-5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow"
+                >
+                  {savingNotes ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <span>Salvar Anotações</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {deleteConfirmModal && deleteConfirmModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 relative overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            {/* Ambient glow */}
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-rose-500/10 rounded-full blur-2xl" />
+            
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              
+              <div className="space-y-2 flex-1">
+                <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                  Confirmar Exclusão Tática
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {deleteConfirmModal.type === "user" ? (
+                    <>
+                      Tem certeza de que deseja excluir permanentemente o guerreiro(a) <strong className="text-rose-400">{deleteConfirmModal.name}</strong>? Todo o progresso, simulados, notas e histórico de estudo serão perdidos para sempre.
+                    </>
+                  ) : (
+                    <>
+                      Tem certeza de que deseja excluir o tema de redação <strong className="text-rose-400">"{deleteConfirmModal.name}"</strong>? Ele não estará mais disponível para os alunos.
+                    </>
+                  )}
+                </p>
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-850/60 mt-4">
+                  <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider block mb-1">
+                    ⚠️ Atenção:
+                  </span>
+                  <p className="text-[10px] text-slate-500 leading-normal">
+                    Esta ação é definitiva e não pode ser desfeita após a confirmação.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-2.5 mt-6 justify-end">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmModal(null)}
+                className="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-lg shadow-rose-600/20"
+              >
+                Excluir Definitivamente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
