@@ -48,14 +48,44 @@ async function generateContentWithRetryClient(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await ai.models.generateContent({
-        model: primaryModel,
-        contents: params.contents,
-        config: params.config,
-      });
+      let response;
+
+      if (params.config && params.config.tools) {
+        // Implement a timeout of 22 seconds for search-enabled queries to avoid long loading times
+        let timeoutId: any;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error("SEARCH_TIMEOUT")), 22000);
+        });
+
+        try {
+          response = await Promise.race([
+            ai.models.generateContent({
+              model: primaryModel,
+              contents: params.contents,
+              config: params.config,
+            }),
+            timeoutPromise
+          ]) as any;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } else {
+        response = await ai.models.generateContent({
+          model: primaryModel,
+          contents: params.contents,
+          config: params.config,
+        });
+      }
+
       return response;
     } catch (err: any) {
+      const isSearchTimeout = err.message === "SEARCH_TIMEOUT";
+      if (isSearchTimeout) {
+        console.warn("[AI Client] Google Search took too long. Disabling search tools and retrying immediately.");
+      }
+
       const isTransient =
+        isSearchTimeout ||
         err.status === 503 ||
         err.status === 429 ||
         (err.message &&
@@ -73,8 +103,11 @@ async function generateContentWithRetryClient(
       }
 
       if (isTransient && attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2;
+        const delayMs = isSearchTimeout ? 100 : delay;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        if (!isSearchTimeout) {
+          delay *= 2;
+        }
       } else {
         if (primaryModel !== fallbackModel) {
           try {
@@ -137,22 +170,29 @@ export async function callAIAction(body: {
 
     if (fetchResponse.ok && !isHtml) {
       return preprocessGeminiResponse(await fetchResponse.json());
-    } else if (isHtml) {
-      throw new Error(
-        "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML). Isso pode ocorrer se o servidor estiver reiniciando ou em manutenção. Por favor, aguarde alguns instantes e recarregue a página."
-      );
     } else {
-      try {
-        const errJson = await fetchResponse.json();
-        if (errJson && errJson.error) {
-          throw new Error(errJson.error);
-        }
-      } catch (e: any) {
-        if (e.message && e.message !== "Unexpected end of JSON input") {
-          throw e;
+      const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
+      if (hasClientKey) {
+        console.warn("[AI Client] O servidor retornou uma resposta inválida ou erro, mas temos uma chave de API do cliente. Tentando geração local...");
+      } else {
+        if (isHtml) {
+          throw new Error(
+            "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML). Isso pode ocorrer se o servidor estiver reiniciando ou em manutenção. Por favor, aguarde alguns instantes e recarregue a página."
+          );
+        } else {
+          try {
+            const errJson = await fetchResponse.json();
+            if (errJson && errJson.error) {
+              throw new Error(errJson.error);
+            }
+          } catch (e: any) {
+            if (e.message && e.message !== "Unexpected end of JSON input") {
+              throw e;
+            }
+          }
+          throw new Error(`O servidor retornou um status de erro: ${fetchResponse.status}`);
         }
       }
-      throw new Error(`O servidor retornou um status de erro: ${fetchResponse.status}`);
     }
   } else {
     const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));

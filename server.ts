@@ -25,14 +25,44 @@ async function generateContentWithRetry(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[AI] Attempt ${attempt} to generate content using model: ${primaryModel}`);
-      const response = await ai.models.generateContent({
-        model: primaryModel,
-        contents: params.contents,
-        config: params.config,
-      });
+      let response;
+
+      if (params.config && params.config.tools) {
+        // Implement a timeout of 22 seconds for search-enabled queries to avoid gateway 504 timeouts (usually 30s)
+        let timeoutId: any;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error("SEARCH_TIMEOUT")), 22000);
+        });
+
+        try {
+          response = await Promise.race([
+            ai.models.generateContent({
+              model: primaryModel,
+              contents: params.contents,
+              config: params.config,
+            }),
+            timeoutPromise
+          ]) as any;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } else {
+        response = await ai.models.generateContent({
+          model: primaryModel,
+          contents: params.contents,
+          config: params.config,
+        });
+      }
+
       return response;
     } catch (err: any) {
+      const isSearchTimeout = err.message === "SEARCH_TIMEOUT";
+      if (isSearchTimeout) {
+        console.warn(`[AI] Google Search took too long. Disabling search tools and retrying immediately.`);
+      }
+
       const isTransient = 
+        isSearchTimeout ||
         err.status === 503 || 
         err.status === 429 || 
         (err.message && (
@@ -51,9 +81,12 @@ async function generateContentWithRetry(
       }
 
       if (isTransient && attempt < maxRetries) {
-        console.warn(`[AI] Transient error (attempt ${attempt}/${maxRetries}): ${err.message || err}. Retrying in ${delay}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2; // exponential backoff
+        const delayMs = isSearchTimeout ? 100 : delay;
+        console.warn(`[AI] Transient error (attempt ${attempt}/${maxRetries}): ${err.message || err}. Retrying in ${delayMs}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        if (!isSearchTimeout) {
+          delay *= 2; // exponential backoff only for non-timeout errors
+        }
       } else {
         // If it's the last attempt or not a retryable transient error, let's try fallback model if appropriate
         if (primaryModel !== fallbackModel) {
