@@ -111,10 +111,15 @@ export async function callAIAction(body: {
       body: JSON.stringify(body),
     });
 
-    if (response.ok && !(await isHtmlResponse(response))) {
+    const isHtml = await isHtmlResponse(response);
+
+    if (response.ok && !isHtml) {
       return preprocessGeminiResponse(await response.json());
-    } else if (!response.ok && !(await isHtmlResponse(response))) {
-      // Backend returned an error response (like a 500 or 400 with a descriptive message)
+    } else if (isHtml) {
+      throw new Error(
+        "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML). Isso pode ocorrer se o servidor estiver reiniciando ou em manutenção. Por favor, aguarde alguns instantes e recarregue a página."
+      );
+    } else {
       try {
         const errJson = await response.json();
         if (errJson && errJson.error) {
@@ -125,12 +130,15 @@ export async function callAIAction(body: {
           throw e;
         }
       }
+      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
     }
   } catch (err: any) {
     console.warn("Backend server returned an error.", err);
-    // If it's a descriptive key error or explicit error from backend, propagate it
-    if (err && err.message) {
-      throw err;
+    const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
+    if (!hasClientKey) {
+      throw new Error(
+        err?.message || "Não foi possível se comunicar com o servidor do Mentor de Estudos IA e nenhuma chave de API local foi configurada. Verifique se o servidor está ativo."
+      );
     }
   }
 
@@ -294,9 +302,15 @@ export async function callAIOcr(body: { image: string; mimeType?: string }): Pro
       body: JSON.stringify(body),
     });
 
-    if (response.ok && !(await isHtmlResponse(response))) {
+    const isHtml = await isHtmlResponse(response);
+
+    if (response.ok && !isHtml) {
       return preprocessGeminiResponse(await response.json());
-    } else if (!response.ok && !(await isHtmlResponse(response))) {
+    } else if (isHtml) {
+      throw new Error(
+        "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML) durante a extração de texto. Por favor, tente novamente em alguns instantes."
+      );
+    } else {
       try {
         const errJson = await response.json();
         if (errJson && errJson.error) {
@@ -307,11 +321,15 @@ export async function callAIOcr(body: { image: string; mimeType?: string }): Pro
           throw e;
         }
       }
+      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
     }
   } catch (err: any) {
     console.warn("Backend server returned an error.", err);
-    if (err && err.message) {
-      throw err;
+    const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
+    if (!hasClientKey) {
+      throw new Error(
+        err?.message || "Não foi possível conectar ao servidor de extração de texto por IA e nenhuma chave local está configurada."
+      );
     }
   }
 
@@ -366,9 +384,15 @@ export async function callAICorrectEssay(body: {
       body: JSON.stringify(body),
     });
 
-    if (response.ok && !(await isHtmlResponse(response))) {
+    const isHtml = await isHtmlResponse(response);
+
+    if (response.ok && !isHtml) {
       return preprocessGeminiResponse(await response.json());
-    } else if (!response.ok && !(await isHtmlResponse(response))) {
+    } else if (isHtml) {
+      throw new Error(
+        "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML) durante a correção da redação. Por favor, aguarde alguns instantes e tente novamente."
+      );
+    } else {
       try {
         const errJson = await response.json();
         if (errJson && errJson.error) {
@@ -379,11 +403,15 @@ export async function callAICorrectEssay(body: {
           throw e;
         }
       }
+      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
     }
   } catch (err: any) {
     console.warn("Backend server returned an error.", err);
-    if (err && err.message) {
-      throw err;
+    const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
+    if (!hasClientKey) {
+      throw new Error(
+        err?.message || "Não foi possível conectar ao servidor de correção de redações e nenhuma chave local está configurada."
+      );
     }
   }
 
@@ -480,9 +508,15 @@ export async function callAIGenerateTheme(body: {
       body: JSON.stringify(body),
     });
 
-    if (response.ok && !(await isHtmlResponse(response))) {
+    const isHtml = await isHtmlResponse(response);
+
+    if (response.ok && !isHtml) {
       return preprocessGeminiResponse(await response.json());
-    } else if (!response.ok && !(await isHtmlResponse(response))) {
+    } else if (isHtml) {
+      throw new Error(
+        "O servidor de Inteligência Artificial retornou uma resposta inesperada (página HTML) durante a geração de tema. Por favor, aguarde alguns instantes e tente novamente."
+      );
+    } else {
       try {
         const errJson = await response.json();
         if (errJson && errJson.error) {
@@ -493,11 +527,15 @@ export async function callAIGenerateTheme(body: {
           throw e;
         }
       }
+      throw new Error(`O servidor retornou um status de erro: ${response.status}`);
     }
   } catch (err: any) {
     console.warn("Backend server returned an error.", err);
-    if (err && err.message) {
-      throw err;
+    const hasClientKey = !!((import.meta as any).env.VITE_GEMINI_API_KEY || localStorage.getItem("VITE_GEMINI_API_KEY"));
+    if (!hasClientKey) {
+      throw new Error(
+        err?.message || "Não foi possível se comunicar com o servidor de geração de temas e nenhuma chave local está configurada."
+      );
     }
   }
 
