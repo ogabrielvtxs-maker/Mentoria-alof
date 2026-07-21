@@ -13,21 +13,41 @@ export function cleanAiOutputText(text: string): string {
   // 1. Convert <br> / <BR> and variants to actual newlines
   cleaned = cleaned.replace(/<br\s*\/?>/gi, "\n");
 
-  // 2. Clean up common LaTeX mathematical and symbolic formatting to clean unicode equivalents
+  // 2. Clean up LaTeX fractions (e.g., \frac{5}{20} -> 5/20) and run 3 times to handle nested fractions
+  for (let i = 0; i < 3; i++) {
+    cleaned = cleaned.replace(/\\frac\{([^\}]+)\}\{([^\}]+)\}/g, "$1/$2");
+  }
+
+  // 3. Clean up LaTeX blackboard bold sets (e.g., \mathbb{N} -> ℕ)
+  cleaned = cleaned.replace(/\\mathbb\{N\}/g, "ℕ")
+                   .replace(/\\mathbb\{Z\}/g, "ℤ")
+                   .replace(/\\mathbb\{Q\}/g, "ℚ")
+                   .replace(/\\mathbb\{R\}/g, "ℝ")
+                   .replace(/\\mathbb\{C\}/g, "ℂ")
+                   .replace(/\\mathbb\{P\}/g, "ℙ")
+                   .replace(/\\mathbb\s+N\b/g, "ℕ")
+                   .replace(/\\mathbb\s+Z\b/g, "ℤ")
+                   .replace(/\\mathbb\s+Q\b/g, "ℚ")
+                   .replace(/\\mathbb\s+R\b/g, "ℝ")
+                   .replace(/\\mathbb\s+C\b/g, "ℂ")
+                   .replace(/\\mathbb\s+P\b/g, "ℙ")
+                   .replace(/\\mathbb\{([^\}]+)\}/g, "$1");
+
+  // 4. Clean up common LaTeX mathematical and symbolic formatting to clean unicode equivalents
   cleaned = cleaned.replace(/\$\\rightarrow\$/g, "→")
-                   .replace(/\\rightarrow/g, "→")
+                   .replace(/\\rightarrow\b/g, "→")
                    .replace(/\$\\to\$/g, "→")
                    .replace(/\\to\b/g, "→")
                    .replace(/\$\\Rightarrow\$/g, "⇒")
-                   .replace(/\\Rightarrow/g, "⇒")
+                   .replace(/\\Rightarrow\b/g, "⇒")
                    .replace(/\$\\leftarrow\$/g, "←")
-                   .replace(/\\leftarrow/g, "←")
+                   .replace(/\\leftarrow\b/g, "←")
                    .replace(/\$\\Leftarrow\$/g, "⇐")
-                   .replace(/\\Leftarrow/g, "⇐")
+                   .replace(/\\Leftarrow\b/g, "⇐")
                    .replace(/\$\\leftrightarrow\$/g, "↔")
-                   .replace(/\\leftrightarrow/g, "↔")
+                   .replace(/\\leftrightarrow\b/g, "↔")
                    .replace(/\$\\Leftrightarrow\$/g, "⇔")
-                   .replace(/\\Leftrightarrow/g, "⇔")
+                   .replace(/\\Leftrightarrow\b/g, "⇔")
                    .replace(/\$\\le\$/g, "≤")
                    .replace(/\\le\b/g, "≤")
                    .replace(/\$\\leq\$/g, "≤")
@@ -46,21 +66,47 @@ export function cleanAiOutputText(text: string): string {
                    .replace(/\\cdot\b/g, "•")
                    .replace(/\$\\dots\$/g, "...")
                    .replace(/\\dots\b/g, "...")
+                   .replace(/\\mid\b/g, " | ")
+                   .replace(/\\in\b/g, " ∈ ")
+                   .replace(/\\notin\b/g, " ∉ ")
+                   .replace(/\\subset\b/g, " ⊂ ")
+                   .replace(/\\subseteq\b/g, " ⊆ ")
+                   .replace(/\\cap\b/g, " ∩ ")
+                   .replace(/\\cup\b/g, " ∪ ")
+                   .replace(/\\emptyset\b/g, " ∅ ")
+                   .replace(/\\infty\b/g, " ∞ ")
+                   .replace(/\\pm\b/g, " ± ")
+                   .replace(/\\mp\b/g, " ∓ ")
+                   .replace(/\\div\b/g, " ÷ ")
+                   .replace(/\\pi\b/g, "π")
+                   .replace(/\\theta\b/g, "θ")
+                   .replace(/\\alpha\b/g, "α")
+                   .replace(/\\beta\b/g, "β")
+                   .replace(/\\gamma\b/g, "γ")
+                   .replace(/\\delta\b/g, "δ")
+                   .replace(/\\lambda\b/g, "λ")
+                   .replace(/\\sigma\b/g, "σ")
+                   .replace(/\\omega\b/g, "ω")
+                   .replace(/\\Delta\b/g, "Δ")
                    .replace(/\\\$/g, "$")
                    .replace(/\\%/g, "%");
 
   // Remove LaTeX \text{...} wrappers keeping only the text inside
   cleaned = cleaned.replace(/\\text\{([^\}]+)\}/g, "$1");
 
-  // Clean simple variable math wrappings (e.g. $x$ -> x, $100$ -> 100)
-  cleaned = cleaned.replace(/\$([a-zA-Z0-9%\s,=<>+\-\*\/]+)\$/g, "$1");
+  // Clean LaTeX square root (e.g., \sqrt{25} -> √(25))
+  cleaned = cleaned.replace(/\\sqrt\{([^\}]+)\}/g, "√($1)");
+
+  // Clean simple variable math wrappings or double dollar math blocks (e.g. $x$ -> x, $100$ -> 100)
+  cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, "$1");
+  cleaned = cleaned.replace(/\$([a-zA-Z0-9%\s,=<>+\-\*\/\\|_^]+)\$/g, "$1");
 
   // Strip raw markdown code-block tags at the start/end if they leak
   cleaned = cleaned.replace(/^```markdown\s*/gi, "")
                    .replace(/^```html\s*/gi, "")
                    .replace(/```$/gm, "");
 
-  // 3. Fix the * (asterisks) issues:
+  // 5. Fix the * (asterisks) issues:
   // Sometimes Gemini outputs lists like "* item" or "** item" or " * item".
   // Let's normalize stray spaces around bullet lists
   cleaned = cleaned.replace(/^\s*[•*]\s+/gm, "- ");
