@@ -1,6 +1,7 @@
 /**
  * Utility to clean up text outputs from AI (Gemini).
  * - Converts <BR>, <br>, <BR/>, <br/> to actual newlines
+ * - Normalizes and cleans up LaTeX/math notations (like $\rightarrow$, \le, etc.) into clean unicode characters
  * - Removes loose/unwanted '*' characters that clutter the text, while maintaining Markdown formatting
  * - Standardizes bullet points
  */
@@ -12,14 +13,60 @@ export function cleanAiOutputText(text: string): string {
   // 1. Convert <br> / <BR> and variants to actual newlines
   cleaned = cleaned.replace(/<br\s*\/?>/gi, "\n");
 
-  // 2. Fix the * (asterisks) issues:
+  // 2. Clean up common LaTeX mathematical and symbolic formatting to clean unicode equivalents
+  cleaned = cleaned.replace(/\$\\rightarrow\$/g, "→")
+                   .replace(/\\rightarrow/g, "→")
+                   .replace(/\$\\to\$/g, "→")
+                   .replace(/\\to\b/g, "→")
+                   .replace(/\$\\Rightarrow\$/g, "⇒")
+                   .replace(/\\Rightarrow/g, "⇒")
+                   .replace(/\$\\leftarrow\$/g, "←")
+                   .replace(/\\leftarrow/g, "←")
+                   .replace(/\$\\Leftarrow\$/g, "⇐")
+                   .replace(/\\Leftarrow/g, "⇐")
+                   .replace(/\$\\leftrightarrow\$/g, "↔")
+                   .replace(/\\leftrightarrow/g, "↔")
+                   .replace(/\$\\Leftrightarrow\$/g, "⇔")
+                   .replace(/\\Leftrightarrow/g, "⇔")
+                   .replace(/\$\\le\$/g, "≤")
+                   .replace(/\\le\b/g, "≤")
+                   .replace(/\$\\leq\$/g, "≤")
+                   .replace(/\\leq\b/g, "≤")
+                   .replace(/\$\\ge\$/g, "≥")
+                   .replace(/\\ge\b/g, "≥")
+                   .replace(/\$\\geq\$/g, "≥")
+                   .replace(/\\geq\b/g, "≥")
+                   .replace(/\$\\neq\$/g, "≠")
+                   .replace(/\\neq\b/g, "≠")
+                   .replace(/\$\\approx\$/g, "≈")
+                   .replace(/\\approx\b/g, "≈")
+                   .replace(/\$\\times\$/g, "×")
+                   .replace(/\\times\b/g, "×")
+                   .replace(/\$\\cdot\$/g, "•")
+                   .replace(/\\cdot\b/g, "•")
+                   .replace(/\$\\dots\$/g, "...")
+                   .replace(/\\dots\b/g, "...")
+                   .replace(/\\\$/g, "$")
+                   .replace(/\\%/g, "%");
+
+  // Remove LaTeX \text{...} wrappers keeping only the text inside
+  cleaned = cleaned.replace(/\\text\{([^\}]+)\}/g, "$1");
+
+  // Clean simple variable math wrappings (e.g. $x$ -> x, $100$ -> 100)
+  cleaned = cleaned.replace(/\$([a-zA-Z0-9%\s,=<>+\-\*\/]+)\$/g, "$1");
+
+  // Strip raw markdown code-block tags at the start/end if they leak
+  cleaned = cleaned.replace(/^```markdown\s*/gi, "")
+                   .replace(/^```html\s*/gi, "")
+                   .replace(/```$/gm, "");
+
+  // 3. Fix the * (asterisks) issues:
   // Sometimes Gemini outputs lists like "* item" or "** item" or " * item".
   // Let's normalize stray spaces around bullet lists
   cleaned = cleaned.replace(/^\s*[•*]\s+/gm, "- ");
 
   // Also, sometimes Gemini uses single asterisks for emphasis, e.g. *texto*.
   // Or it produces lone asterisks due to syntax issues. Let's remove lone asterisks that aren't starting a bullet point or aren't part of a bold double asterisk block (**).
-  // For instance, let's replace stray asterisks (lone * surrounded by spaces) with bullet characters or remove them.
   cleaned = cleaned.replace(/\s\*\s/g, " ");
 
   // Sometimes there are double bold markers inside headings, like "### **Assunto**". Let's clean that up to be standard heading
@@ -41,6 +88,9 @@ export function stripMarkdownAsterisks(text: string): string {
   // Convert <br> variants to actual newlines
   cleaned = cleaned.replace(/<br\s*\/?>/gi, "\n");
 
+  // Pre-clean LaTeX notations first
+  cleaned = cleanAiOutputText(cleaned);
+
   // Remove double asterisks (used for bolding) but keep the content
   cleaned = cleaned.replace(/\*\*([\s\S]*?)\*\*/g, "$1");
 
@@ -61,8 +111,8 @@ export function stripMarkdownAsterisks(text: string): string {
  */
 export function strictPreprocessGeminiText(text: string): string {
   if (!text) return "";
-  // Preserve markdown asterisks (* and **) so our rich text renderer can display bolding, lists, and tables correctly.
-  return text;
+  // Return the cleaned version of LaTeX and other AI output flaws
+  return cleanAiOutputText(text);
 }
 
 /**

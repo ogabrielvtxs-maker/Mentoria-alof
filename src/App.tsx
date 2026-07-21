@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { User, WeeklyReport } from "./types";
 import { initialSyllabusData } from "./data/syllabusData";
 import Login from "./components/Login";
@@ -1050,208 +1051,224 @@ export default function App() {
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Navigation Sidebar (Desktop) */}
-        {!sidebarMinimized ? (
-          <nav className="hidden md:block lg:col-span-3 space-y-2">
-            
-            <div className="bg-slate-950 px-4 py-4 rounded-2xl border border-slate-850 mb-4 space-y-3.5 shadow-md">
-              <div>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Status de Serviço</span>
-                <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="text-xs text-slate-300 font-semibold truncate">
-                    {currentUser.isAdmin ? "Acesso Total (Coordenador)" : "Acesso Estudantil Homologado"}
-                  </span>
+        <AnimatePresence mode="wait">
+          {!sidebarMinimized ? (
+            <motion.nav 
+              key="sidebar-expanded"
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="hidden md:block lg:col-span-3 space-y-2"
+            >
+              
+              <div className="bg-slate-950 px-4 py-4 rounded-2xl border border-slate-850 mb-4 space-y-3.5 shadow-md">
+                <div>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Status de Serviço</span>
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="text-xs text-slate-300 font-semibold truncate">
+                      {currentUser.isAdmin ? "Acesso Total (Coordenador)" : "Acesso Estudantil Homologado"}
+                    </span>
+                  </div>
                 </div>
+
+                {!currentUser.isAdmin && (
+                  <>
+                    <div className="h-px bg-slate-850" />
+                    
+                    <div>
+                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Última Entrada</span>
+                      <div className="flex items-center gap-2">
+                        <History className="w-4 h-4 text-teal-400 shrink-0" />
+                        <span className="text-xs text-slate-300 font-semibold">
+                          {lastLoginDisplay ? formatLastLogin(lastLoginDisplay) : "Primeiro acesso hoje"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-slate-850" />
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Edital Verticalizado</span>
+                        <span className="text-xs text-amber-400 font-extrabold">{syllabusProgressPercent}%</span>
+                      </div>
+                      {/* Sleek dynamic progress bar */}
+                      <div className="w-full h-2 bg-slate-900 border border-slate-800 rounded-full overflow-hidden relative">
+                        <div 
+                          className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-1000 ease-out shadow-[0_0_8px_rgba(245,158,11,0.3)]"
+                          style={{ width: `${syllabusProgressPercent}%` }}
+                        />
+                      </div>
+                      <span className="text-[9px] text-slate-500 font-medium mt-1 block">Tópicos lidos / concluídos</span>
+                    </div>
+                  </>
+                )}
               </div>
 
-              {!currentUser.isAdmin && (
-                <>
-                  <div className="h-px bg-slate-850" />
-                  
-                  <div>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Última Entrada</span>
-                    <div className="flex items-center gap-2">
-                      <History className="w-4 h-4 text-teal-400 shrink-0" />
-                      <span className="text-xs text-slate-300 font-semibold">
-                        {lastLoginDisplay ? formatLastLogin(lastLoginDisplay) : "Primeiro acesso hoje"}
-                      </span>
-                    </div>
-                  </div>
+              <div className="space-y-1">
+                {!currentUser.isAdmin && (
+                  <>
+                    <button
+                      onClick={() => setActiveTab("cycle")}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activeTab === "cycle" 
+                          ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                          : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                      }`}
+                    >
+                      <Calendar className="w-4 h-4 shrink-0" />
+                      <span>Meu Ciclo Semanal</span>
+                    </button>
 
-                  <div className="h-px bg-slate-850" />
+                    <button
+                      onClick={() => setActiveTab("pomodoro")}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activeTab === "pomodoro" 
+                          ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                          : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                      }`}
+                    >
+                      <Clock className="w-4 h-4 shrink-0" />
+                      <span>Pomodoro Tático</span>
+                    </button>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Edital Verticalizado</span>
-                      <span className="text-xs text-amber-400 font-extrabold">{syllabusProgressPercent}%</span>
-                    </div>
-                    {/* Sleek dynamic progress bar */}
-                    <div className="w-full h-2 bg-slate-900 border border-slate-800 rounded-full overflow-hidden relative">
-                      <div 
-                        className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-1000 ease-out shadow-[0_0_8px_rgba(245,158,11,0.3)]"
-                        style={{ width: `${syllabusProgressPercent}%` }}
-                      />
-                    </div>
-                    <span className="text-[9px] text-slate-500 font-medium mt-1 block">Tópicos lidos / concluídos</span>
-                  </div>
-                </>
-              )}
-            </div>
+                    <button
+                      onClick={() => setActiveTab("stats")}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activeTab === "stats" 
+                          ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                          : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                      }`}
+                    >
+                      <BarChart3 className="w-4 h-4 shrink-0" />
+                      <span>Estatísticas & Erros</span>
+                    </button>
 
-            <div className="space-y-1">
-              {!currentUser.isAdmin && (
-                <>
-                  <button
-                    onClick={() => setActiveTab("cycle")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      activeTab === "cycle" 
-                        ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                        : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                    }`}
-                  >
-                    <Calendar className="w-4 h-4 shrink-0" />
-                    <span>Meu Ciclo Semanal</span>
-                  </button>
+                    <button
+                      onClick={() => setActiveTab("syllabus")}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activeTab === "syllabus" 
+                          ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                          : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                      }`}
+                    >
+                      <BookOpen className="w-4 h-4 shrink-0" />
+                      <span>Edital Verticalizado</span>
+                    </button>
 
-                  <button
-                    onClick={() => setActiveTab("pomodoro")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      activeTab === "pomodoro" 
-                        ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                        : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                    }`}
-                  >
-                    <Clock className="w-4 h-4 shrink-0" />
-                    <span>Pomodoro Tático</span>
-                  </button>
+                    <button
+                      onClick={() => setActiveTab("redacao")}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activeTab === "redacao" 
+                          ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                          : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                      }`}
+                    >
+                      <FileText className="w-4 h-4 shrink-0" />
+                      <span>Redação Corretor I.A.</span>
+                    </button>
 
-                  <button
-                    onClick={() => setActiveTab("stats")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      activeTab === "stats" 
-                        ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                        : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                    }`}
-                  >
-                    <BarChart3 className="w-4 h-4 shrink-0" />
-                    <span>Estatísticas & Erros</span>
-                  </button>
+                    <button
+                      onClick={() => setActiveTab("inbox")}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activeTab === "inbox" 
+                          ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                          : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Mail className="w-4 h-4 shrink-0" />
+                        <span>Correio Coordenador</span>
+                      </div>
+                      {unreadReportsCount > 0 && (
+                        <span className="bg-amber-400 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                          {unreadReportsCount}
+                        </span>
+                      )}
+                    </button>
+                  </>
+                )}
 
-                  <button
-                    onClick={() => setActiveTab("syllabus")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      activeTab === "syllabus" 
-                        ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                        : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                    }`}
-                  >
-                    <BookOpen className="w-4 h-4 shrink-0" />
-                    <span>Edital Verticalizado</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab("redacao")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      activeTab === "redacao" 
-                        ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                        : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                    }`}
-                  >
-                    <FileText className="w-4 h-4 shrink-0" />
-                    <span>Redação Corretor I.A.</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab("inbox")}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      activeTab === "inbox" 
-                        ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                        : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Mail className="w-4 h-4 shrink-0" />
-                      <span>Correio Coordenador</span>
-                    </div>
-                    {unreadReportsCount > 0 && (
-                      <span className="bg-amber-400 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse">
-                        {unreadReportsCount}
-                      </span>
-                    )}
-                  </button>
-                </>
-              )}
-
-              {/* Biblioteca Area - Available for both students and admins */}
-              <button
-                onClick={() => setActiveTab("content")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  activeTab === "content" 
-                    ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                    : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                }`}
-              >
-                <FolderOpen className="w-4 h-4 shrink-0" />
-                <span>{currentUser.isAdmin ? "Biblioteca & Materiais" : "Biblioteca Pública"}</span>
-              </button>
-
-              {/* Simulados Area - Dedicated tab for mock exams and tests */}
-              <button
-                onClick={() => setActiveTab("simulados")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  activeTab === "simulados" 
-                    ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                    : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                }`}
-              >
-                <ClipboardList className="w-4 h-4 shrink-0 text-amber-400" />
-                <span>{currentUser.isAdmin ? "Gerenciar Simulados" : "Simulados & Provas"}</span>
-              </button>
-
-              {/* Questões do Coordenador - Dedicated area for Coordinator training questions */}
-              <button
-                onClick={() => setActiveTab("questions")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  activeTab === "questions" 
-                    ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
-                    : "text-slate-400 hover:bg-slate-950 hover:text-white"
-                }`}
-              >
-                <HelpCircle className="w-4 h-4 shrink-0 text-amber-400" />
-                <span>Questões do Coordenador</span>
-              </button>
-
-              {/* Admin Area - Available for admin only or student with admin role */}
-              {currentUser.isAdmin && (
+                {/* Biblioteca Area - Available for both students and admins */}
                 <button
-                  onClick={() => setActiveTab("admin")}
+                  onClick={() => setActiveTab("content")}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    activeTab === "admin" 
+                    activeTab === "content" 
                       ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
                       : "text-slate-400 hover:bg-slate-950 hover:text-white"
                   }`}
                 >
-                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>Painel de Controle Admin</span>
+                  <FolderOpen className="w-4 h-4 shrink-0" />
+                  <span>{currentUser.isAdmin ? "Biblioteca & Materiais" : "Biblioteca Pública"}</span>
                 </button>
-              )}
-            </div>
-          </nav>
-        ) : (
-          <div className="hidden md:flex lg:col-span-1 flex-col items-center py-5 bg-slate-950/80 border border-slate-850/80 rounded-2xl h-fit space-y-4 shadow-xl">
-            <button
-              onClick={() => setSidebarMinimized(false)}
-              className="p-3 bg-slate-900 hover:bg-amber-400 border border-amber-400/20 text-amber-400 hover:text-slate-950 rounded-xl transition-all cursor-pointer shadow-md"
-              title="Restaurar Menu Lateral"
+
+                {/* Simulados Area - Dedicated tab for mock exams and tests */}
+                <button
+                  onClick={() => setActiveTab("simulados")}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "simulados" 
+                      ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                      : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                  }`}
+                >
+                  <ClipboardList className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>{currentUser.isAdmin ? "Gerenciar Simulados" : "Simulados & Provas"}</span>
+                </button>
+
+                {/* Questões do Coordenador - Dedicated area for Coordinator training questions */}
+                <button
+                  onClick={() => setActiveTab("questions")}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "questions" 
+                      ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                      : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                  }`}
+                >
+                  <HelpCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>Questões do Coordenador</span>
+                </button>
+
+                {/* Admin Area - Available for admin only or student with admin role */}
+                {currentUser.isAdmin && (
+                  <button
+                    onClick={() => setActiveTab("admin")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      activeTab === "admin" 
+                        ? "bg-slate-900 border-l-4 border-amber-400 text-amber-400" 
+                        : "text-slate-400 hover:bg-slate-950 hover:text-white"
+                    }`}
+                  >
+                    <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Painel de Controle Admin</span>
+                  </button>
+                )}
+              </div>
+            </motion.nav>
+          ) : (
+            <motion.div 
+              key="sidebar-minimized"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className="hidden md:flex lg:col-span-1 flex-col items-center py-5 bg-slate-950/80 border border-slate-850/80 rounded-2xl h-fit space-y-4 shadow-xl"
             >
-              <Menu className="w-4 h-4" />
-            </button>
-            <div className="h-20 border-l border-slate-800" />
-            <span className="text-[10px] text-slate-400 font-black font-mono tracking-widest uppercase select-none" style={{ writingMode: "vertical-rl" }}>
-              Modo Foco Ativo ⚡
-            </span>
-          </div>
-        )}
+              <button
+                onClick={() => setSidebarMinimized(false)}
+                className="p-3 bg-slate-900 hover:bg-amber-400 border border-amber-400/20 text-amber-400 hover:text-slate-950 rounded-xl transition-all cursor-pointer shadow-md"
+                title="Restaurar Menu Lateral"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+              <div className="h-20 border-l border-slate-800" />
+              <span className="text-[10px] text-slate-400 font-black font-mono tracking-widest uppercase select-none" style={{ writingMode: "vertical-rl" }}>
+                Modo Foco Ativo ⚡
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Mobile Navigation Dropdown Menu */}
         {mobileMenuOpen && (
@@ -1422,164 +1439,175 @@ export default function App() {
         {/* Content Viewer Section */}
         <main className={`col-span-1 ${sidebarMinimized ? "lg:col-span-11" : "lg:col-span-9"} space-y-6`}>
           
-          {/* Active Tab Router */}
-          {activeTab === "cycle" && !currentUser.isAdmin && (
-            <WeeklyCycle 
-              currentUser={currentUser} 
-              onOpenPomodoro={() => setActiveTab("pomodoro")} 
-            />
-          )}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="w-full"
+            >
+              {/* Active Tab Router */}
+              {activeTab === "cycle" && !currentUser.isAdmin && (
+                <WeeklyCycle 
+                  currentUser={currentUser} 
+                  onOpenPomodoro={() => setActiveTab("pomodoro")} 
+                />
+              )}
 
-          {activeTab === "pomodoro" && !currentUser.isAdmin && (
-            <Pomodoro 
-              currentUser={currentUser} 
-              sidebarMinimized={sidebarMinimized}
-              setSidebarMinimized={setSidebarMinimized}
-            />
-          )}
+              {activeTab === "pomodoro" && !currentUser.isAdmin && (
+                <Pomodoro 
+                  currentUser={currentUser} 
+                  sidebarMinimized={sidebarMinimized}
+                  setSidebarMinimized={setSidebarMinimized}
+                />
+              )}
 
-          {activeTab === "stats" && !currentUser.isAdmin && (
-            <PerformanceStats currentUser={currentUser} />
-          )}
+              {activeTab === "stats" && !currentUser.isAdmin && (
+                <PerformanceStats currentUser={currentUser} />
+              )}
 
-          {activeTab === "syllabus" && !currentUser.isAdmin && (
-            <VerticalSyllabus currentUser={currentUser} />
-          )}
+              {activeTab === "syllabus" && !currentUser.isAdmin && (
+                <VerticalSyllabus currentUser={currentUser} />
+              )}
 
-          {activeTab === "redacao" && !currentUser.isAdmin && (
-            <RedacaoCorrector currentUser={currentUser} />
-          )}
+              {activeTab === "redacao" && !currentUser.isAdmin && (
+                <RedacaoCorrector currentUser={currentUser} />
+              )}
 
-          {activeTab === "content" && (
-            <ContentArea 
-              currentUser={currentUser} 
-              onlySimulados={false} 
-              sidebarMinimized={sidebarMinimized}
-              setSidebarMinimized={setSidebarMinimized}
-            />
-          )}
+              {activeTab === "content" && (
+                <ContentArea 
+                  currentUser={currentUser} 
+                  onlySimulados={false} 
+                  sidebarMinimized={sidebarMinimized}
+                  setSidebarMinimized={setSidebarMinimized}
+                />
+              )}
 
-          {activeTab === "simulados" && (
-            <ContentArea 
-              currentUser={currentUser} 
-              onlySimulados={true} 
-              sidebarMinimized={sidebarMinimized}
-              setSidebarMinimized={setSidebarMinimized}
-            />
-          )}
+              {activeTab === "simulados" && (
+                <ContentArea 
+                  currentUser={currentUser} 
+                  onlySimulados={true} 
+                  sidebarMinimized={sidebarMinimized}
+                  setSidebarMinimized={setSidebarMinimized}
+                />
+              )}
 
-          {activeTab === "questions" && (
-            <CoordinatorQuestions currentUser={currentUser} />
-          )}
+              {activeTab === "questions" && (
+                <CoordinatorQuestions currentUser={currentUser} />
+              )}
 
-          {/* Student Mailbox (Caixa de Correio) */}
-          {activeTab === "inbox" && !currentUser.isAdmin && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white shadow-xl space-y-6">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-                <Mail className="w-6 h-6 text-amber-500 animate-pulse" />
-                <div>
-                  <h2 className="text-lg font-bold text-amber-400 uppercase tracking-wider">Correio do Coordenador</h2>
-                  <p className="text-slate-400 text-xs">Suas orientações semanais, planos táticos personalizados e correções enviadas pelo administrador.</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {myReports.map((report) => {
-                  const isRead = readReportIds.includes(report.id);
-                  const isExpanded = expandedReportIds.includes(report.id);
-
-                  return (
-                    <div 
-                      key={report.id} 
-                      onClick={() => toggleExpandReport(report.id)}
-                      className={`bg-slate-950 p-5 rounded-2xl border transition duration-300 relative overflow-hidden group cursor-pointer ${
-                        isRead 
-                          ? "border-slate-900 opacity-80" 
-                          : "border-amber-400/30 shadow-amber-400/5 shadow-md"
-                      }`}
-                    >
-                      <div className={`absolute top-0 left-0 w-1.5 h-full ${isRead ? "bg-slate-700" : "bg-amber-400"}`} />
-                      
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400 border-b border-slate-850 pb-2.5">
-                        <div className="flex items-center gap-2">
-                          <Award className={`w-4 h-4 ${isRead ? "text-slate-500" : "text-amber-400"}`} />
-                          <span className={`font-bold uppercase tracking-wide font-mono ${isRead ? "text-slate-400" : "text-amber-400"}`}>
-                            Boletim Tático - Semana {report.weekNumber}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-[10px] text-slate-500">Postado: {report.createdAt.split("T")[0]}</span>
-                          {isRead ? (
-                            <span className="bg-slate-900/60 text-slate-500 text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded border border-slate-850">
-                              ✓ Lido
-                            </span>
-                          ) : (
-                            <span className="bg-amber-400/10 text-amber-400 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-amber-400/20 animate-pulse">
-                              ● Não Lido
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Content Preview / Fully Expanded Content */}
-                      <div className="mt-3 pl-1.5">
-                        {isExpanded ? (
-                          <div className="space-y-3.5">
-                            <p className="text-xs text-slate-100 whitespace-pre-line leading-relaxed">
-                              {stripMarkdownAsterisks(report.content)}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleExpandReport(report.id);
-                              }}
-                              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition mt-2 cursor-pointer"
-                            >
-                              Fechar Mensagem
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <p className="text-xs text-slate-400 line-clamp-1 max-w-xl">
-                              {stripMarkdownAsterisks(report.content)}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleExpandReport(report.id);
-                              }}
-                              className="px-3.5 py-1.5 bg-amber-400 text-slate-950 rounded-lg text-[10px] font-black uppercase tracking-wider hover:brightness-110 transition shrink-0 cursor-pointer shadow"
-                            >
-                              Abrir Mensagem 📬
-                            </button>
-                          </div>
-                        )}
-                      </div>
+              {/* Student Mailbox (Caixa de Correio) */}
+              {activeTab === "inbox" && !currentUser.isAdmin && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-white shadow-xl space-y-6">
+                  <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                    <Mail className="w-6 h-6 text-amber-500 animate-pulse" />
+                    <div>
+                      <h2 className="text-lg font-bold text-amber-400 uppercase tracking-wider">Correio do Coordenador</h2>
+                      <p className="text-slate-400 text-xs">Suas orientações semanais, planos táticos personalizados e correções enviadas pelo administrador.</p>
                     </div>
-                  );
-                })}
-
-                {myReports.length === 0 && (
-                  <div className="text-center py-12 bg-slate-950/40 rounded-xl border border-slate-850">
-                    <Mail className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-                    <span className="text-slate-500 text-xs">Sua caixa de correio está vazia. Aguarde o feedback semanal do Coordenador.</span>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
 
-          {activeTab === "admin" && currentUser.isAdmin && (
-            <AdminPanel
-              currentUser={currentUser}
-              allUsers={allUsers}
-              onUpdateUser={handleUpdateUser}
-              onDeleteUser={handleDeleteUser}
-              onAddUser={handleRegisterUser}
-            />
-          )}
+                  <div className="space-y-4">
+                    {myReports.map((report) => {
+                      const isRead = readReportIds.includes(report.id);
+                      const isExpanded = expandedReportIds.includes(report.id);
+
+                      return (
+                        <div 
+                          key={report.id} 
+                          onClick={() => toggleExpandReport(report.id)}
+                          className={`bg-slate-950 p-5 rounded-2xl border transition duration-300 relative overflow-hidden group cursor-pointer ${
+                            isRead 
+                              ? "border-slate-900 opacity-80" 
+                              : "border-amber-400/30 shadow-amber-400/5 shadow-md"
+                          }`}
+                        >
+                          <div className={`absolute top-0 left-0 w-1.5 h-full ${isRead ? "bg-slate-700" : "bg-amber-400"}`} />
+                          
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400 border-b border-slate-850 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <Award className={`w-4 h-4 ${isRead ? "text-slate-500" : "text-amber-400"}`} />
+                              <span className={`font-bold uppercase tracking-wide font-mono ${isRead ? "text-slate-400" : "text-amber-400"}`}>
+                                Boletim Tático - Semana {report.weekNumber}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono text-[10px] text-slate-500">Postado: {report.createdAt.split("T")[0]}</span>
+                              {isRead ? (
+                                <span className="bg-slate-900/60 text-slate-500 text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded border border-slate-850">
+                                  ✓ Lido
+                                </span>
+                              ) : (
+                                <span className="bg-amber-400/10 text-amber-400 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-amber-400/20 animate-pulse">
+                                  ● Não Lido
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Content Preview / Fully Expanded Content */}
+                          <div className="mt-3 pl-1.5">
+                            {isExpanded ? (
+                              <div className="space-y-3.5">
+                                <p className="text-xs text-slate-100 whitespace-pre-line leading-relaxed">
+                                  {stripMarkdownAsterisks(report.content)}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleExpandReport(report.id);
+                                  }}
+                                  className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-white transition mt-2 cursor-pointer"
+                                >
+                                  Fechar Mensagem
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <p className="text-xs text-slate-400 line-clamp-1 max-w-xl">
+                                  {stripMarkdownAsterisks(report.content)}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleExpandReport(report.id);
+                                  }}
+                                  className="px-3.5 py-1.5 bg-amber-400 text-slate-950 rounded-lg text-[10px] font-black uppercase tracking-wider hover:brightness-110 transition shrink-0 cursor-pointer shadow"
+                                >
+                                  Abrir Mensagem 📬
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {myReports.length === 0 && (
+                      <div className="text-center py-12 bg-slate-950/40 rounded-xl border border-slate-850">
+                        <Mail className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                        <span className="text-slate-500 text-xs">Sua caixa de correio está vazia. Aguarde o feedback semanal do Coordenador.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "admin" && currentUser.isAdmin && (
+                <AdminPanel
+                  currentUser={currentUser}
+                  allUsers={allUsers}
+                  onUpdateUser={handleUpdateUser}
+                  onDeleteUser={handleDeleteUser}
+                  onAddUser={handleRegisterUser}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
 
         </main>
 
